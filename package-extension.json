@@ -1,0 +1,201 @@
+{
+	"name": "aether-mobile",
+	"displayName": "AETHER AI Assistant",
+	"description": "AI-powered coding assistant - Chat, edit files, run commands from VS Code and mobile",
+	"version": "2.0.0",
+	"publisher": "aether",
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+	"categories": [
+		"Machine Learning",
+		"Programming Languages",
+		"Other"
+	],
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "aether-chat",
+					"title": "AETHER AI",
+					"icon": "resources/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"aether-chat": [
+				{
+					"type": "webview",
+					"id": "aether.chatPanel",
+					"name": "Chat"
+				},
+				{
+					"id": "aether.mobileProjects",
+					"name": "📱 Mobile Projects",
+					"type": "tree"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "aether.connect",
+				"title": "AETHER: Connect to Server"
+			},
+			{
+				"command": "aether.disconnect",
+				"title": "AETHER: Disconnect"
+			},
+			{
+				"command": "aether.showStatus",
+				"title": "AETHER: Show Status"
+			},
+			{
+				"command": "aether.openSettings",
+				"title": "AETHER: Open Settings"
+			},
+			{
+				"command": "aether.clearChat",
+				"title": "AETHER: Clear Chat"
+			},
+			{
+				"command": "aether.clearCloudProjects",
+				"title": "AETHER: Reset Cloud Projects (Fix Sync)"
+			},
+			{
+				"command": "aether.addCurrentProject",
+				"title": "Add Current Project",
+				"icon": "$(add)"
+			},
+			{
+				"command": "aether.browseProject",
+				"title": "Browse for Project",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "aether.syncProjects",
+				"title": "Sync to Mobile",
+				"icon": "$(sync)"
+			},
+			{
+				"command": "aether.removeProject",
+				"title": "Remove Project",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "aether.refreshProjects",
+				"title": "Refresh",
+				"icon": "$(refresh)"
+			}
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "aether.addCurrentProject",
+					"when": "view == aether.mobileProjects",
+					"group": "navigation@1"
+				},
+				{
+					"command": "aether.browseProject",
+					"when": "view == aether.mobileProjects",
+					"group": "navigation@2"
+				},
+				{
+					"command": "aether.syncProjects",
+					"when": "view == aether.mobileProjects",
+					"group": "navigation@3"
+				},
+				{
+					"command": "aether.refreshProjects",
+					"when": "view == aether.mobileProjects",
+					"group": "navigation@4"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "aether.removeProject",
+					"when": "view == aether.mobileProjects && viewItem == syncedProject",
+					"group": "inline"
+				}
+			]
+		},
+		"configuration": {
+			"title": "AETHER AI",
+			"properties": {
+				"aether.serverUrl": {
+					"type": "string",
+					"default": "https://aether-relay-server-production.up.railway.app",
+					"description": "URL of the AETHER relay server (Cloud or local)"
+				},
+				"aether.autoConnect": {
+					"type": "boolean",
+					"default": true,
+					"description": "Auto-connect on startup"
+				},
+				"aether.pollingInterval": {
+					"type": "number",
+					"default": 2000,
+					"description": "Polling interval (ms)"
+				},
+				"aether.selectedModel": {
+					"type": "string",
+					"default": "gemini",
+					"enum": [
+						"gemini",
+						"openai",
+						"claude",
+						"ollama",
+						"grok",
+						"deepseek"
+					],
+					"description": "Default AI model"
+				},
+				"aether.apiKeys.gemini": {
+					"type": "string",
+					"default": "",
+					"description": "Gemini API Key"
+				},
+				"aether.apiKeys.openai": {
+					"type": "string",
+					"default": "",
+					"description": "OpenAI API Key"
+				},
+				"aether.apiKeys.claude": {
+					"type": "string",
+					"default": "",
+					"description": "Claude API Key"
+				},
+				"aether.apiKeys.grok": {
+					"type": "string",
+					"default": "",
+					"description": "Grok API Key"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"package": "vsce package",
+		"start:all": "./start-all.sh",
+		"start:all:ngrok": "./start-all.sh --ngrok"
+	},
+	"devDependencies": {
+		"@types/node": "^20.10.0",
+		"@types/vscode": "^1.85.0",
+		"typescript": "^5.3.0",
+		"@vscode/vsce": "^2.22.0"
+	},
+	"keywords": [
+		"ai",
+		"copilot",
+		"chat",
+		"mobile",
+		"sync",
+		"coding assistant"
+	]
+}
