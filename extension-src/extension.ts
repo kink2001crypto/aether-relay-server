@@ -1,84 +1,111 @@
-/**
- * 🌐 AETHER Extension - Server-Only
- * Connect to Railway server, no localhost
- */
-
 import * as vscode from 'vscode';
-import { SyncHandler } from './syncHandler';
-import { MobileProjectsProvider } from './mobileProjects';
-import { ChatPanelProvider } from './chatPanel';
 import { StatusBarManager } from './statusBar';
+import { SyncHandler } from './syncHandler';
+import { ChatPanelProvider } from './chatPanel';
+import { MobileProjectsProvider } from './mobileProjects';
 
-// 🌐 SERVER URL - Railway only
-const SERVER_URL = 'https://aether-relay-server-production.up.railway.app';
-
+let statusBar: StatusBarManager;
 let syncHandler: SyncHandler;
+let chatProvider: ChatPanelProvider;
 let mobileProjectsProvider: MobileProjectsProvider;
-let chatPanelProvider: ChatPanelProvider;
-let statusBarManager: StatusBarManager;
 let pollingInterval: NodeJS.Timeout | undefined;
+let isConnected = false;
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('🚀 AETHER Extension starting...');
+	console.log('🧠 AETHER AI Assistant activated');
 
-	// Initialize handlers with server URL
-	syncHandler = new SyncHandler(SERVER_URL);
+	// Initialize components
+	statusBar = new StatusBarManager(context);
+	syncHandler = new SyncHandler();
+	chatProvider = new ChatPanelProvider(context);
 	mobileProjectsProvider = new MobileProjectsProvider(context);
-	mobileProjectsProvider.setServerUrl(SERVER_URL);
-	chatPanelProvider = new ChatPanelProvider(context.extensionUri);
-	statusBarManager = new StatusBarManager();
 
-	// Register tree view
-	vscode.window.registerTreeDataProvider('aetherMobileProjects', mobileProjectsProvider);
-
-	// Register webview
+	// Register chat panel provider
 	context.subscriptions.push(
-		vscode.window.registerWebviewViewProvider('aether.chatPanel', chatPanelProvider)
+		vscode.window.registerWebviewViewProvider(
+			ChatPanelProvider.viewType,
+			chatProvider,
+			{ webviewOptions: { retainContextWhenHidden: true } }
+		)
+	);
+
+	// Register Mobile Projects TreeView
+	context.subscriptions.push(
+		vscode.window.registerTreeDataProvider('aether.mobileProjects', mobileProjectsProvider)
 	);
 
 	// Register commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('aether.connect', connect),
-		vscode.commands.registerCommand('aether.disconnect', disconnect),
-		vscode.commands.registerCommand('aether.syncProject', () => mobileProjectsProvider.syncCurrentProject()),
-		vscode.commands.registerCommand('aether.addProject', () => mobileProjectsProvider.addCurrentProject()),
-		vscode.commands.registerCommand('aether.removeProject', (item: any) => mobileProjectsProvider.removeProject(item)),
+		vscode.commands.registerCommand('aether.connect', () => connect()),
+		vscode.commands.registerCommand('aether.disconnect', () => disconnect()),
+		vscode.commands.registerCommand('aether.showStatus', () => showStatus()),
+		vscode.commands.registerCommand('aether.openSettings', () => {
+			vscode.commands.executeCommand('workbench.action.openSettings', 'aether');
+		}),
+		vscode.commands.registerCommand('aether.clearChat', () => {
+			vscode.window.showInformationMessage('Chat cleared');
+		}),
+		// Mobile Projects commands
+		vscode.commands.registerCommand('aether.addCurrentProject', () => mobileProjectsProvider.addCurrentWorkspace()),
+		vscode.commands.registerCommand('aether.browseProject', () => mobileProjectsProvider.browseAndAdd()),
+		vscode.commands.registerCommand('aether.syncProjects', () => mobileProjectsProvider.syncToCloud()),
+		vscode.commands.registerCommand('aether.removeProject', (item: any) => {
+			if (item?.projectPath) {
+				mobileProjectsProvider.removeProject(item.projectPath);
+			}
+		}),
 		vscode.commands.registerCommand('aether.refreshProjects', () => mobileProjectsProvider.refresh()),
-		vscode.commands.registerCommand('aether.clearProjects', () => mobileProjectsProvider.clearAllProjects()),
-		vscode.commands.registerCommand('aether.showStatus', showStatus),
-		vscode.commands.registerCommand('aether.openChat', () => { })
+		vscode.commands.registerCommand('aether.clearCloudProjects', () => mobileProjectsProvider.clearCloud())
 	);
 
-	// Auto-connect on startup
-	connect();
+	// Auto-connect if enabled
+	const config = vscode.workspace.getConfiguration('aether');
+	if (config.get('autoConnect', true)) {
+		connect();
+	}
 }
 
 async function connect() {
-	try {
-		statusBarManager.setConnecting();
+	const config = vscode.workspace.getConfiguration('aether');
+	let serverUrl = config.get<string>('serverUrl', 'https://aether-relay-server-production.up.railway.app');
+	const interval = config.get('pollingInterval', 500);
 
-		const response = await fetch(`${SERVER_URL}/api/sync/status`, {
+	// FIX: Force Cloud URL if Localhost is configured (for LTE support)
+	if (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) {
+		serverUrl = 'https://aether-relay-server-production.up.railway.app';
+		vscode.window.showWarningMessage('⚠️ AETHER: Localhost settings detected. Switched to Cloud Server for LTE/Mobile support.');
+	}
+
+	statusBar.setConnecting();
+
+	try {
+		// Test connection
+		const response = await fetch(`${serverUrl}/api/sync/status`, {
 			headers: { 'ngrok-skip-browser-warning': 'true' }
 		});
-
-		if (response.ok) {
-			statusBarManager.setConnected();
-			syncHandler.setServerUrl(SERVER_URL);
-			mobileProjectsProvider.setServerUrl(SERVER_URL);
-
-			// Register workspace
-			await registerWorkspace();
-
-			// Start polling
-			startPolling();
-
-			vscode.window.showInformationMessage('✅ Connected to AETHER Server');
-		} else {
-			throw new Error('Server not responding');
+		if (!response.ok) {
+			throw new Error('Server not reachable');
 		}
-	} catch (error: any) {
-		statusBarManager.setDisconnected();
-		vscode.window.showErrorMessage(`❌ Connection failed: ${error.message}`);
+
+		isConnected = true;
+		statusBar.setConnected();
+
+		// Set server URL for sync handler and mobile projects
+		syncHandler.setServerUrl(serverUrl as string);
+		mobileProjectsProvider.setServerUrl(serverUrl as string);
+
+		// Register current workspace with server
+		await registerWorkspace(serverUrl as string);
+
+		// Sync selected mobile projects to cloud
+		await mobileProjectsProvider.syncToCloud();
+
+		startPolling(serverUrl as string, interval as number);
+		vscode.window.showInformationMessage('🟢 AETHER: Connected to server');
+	} catch (error) {
+		isConnected = false;
+		statusBar.setDisconnected();
+		vscode.window.showErrorMessage(`🔴 AETHER: Failed to connect - ${error}`);
 	}
 }
 
@@ -87,68 +114,104 @@ function disconnect() {
 		clearInterval(pollingInterval);
 		pollingInterval = undefined;
 	}
-	statusBarManager.setDisconnected();
-	vscode.window.showInformationMessage('Disconnected from AETHER Server');
+	syncHandler.stopCloudSync();
+	isConnected = false;
+	statusBar.setDisconnected();
+	vscode.window.showInformationMessage('AETHER: Disconnected');
 }
 
-function startPolling() {
-	if (pollingInterval) clearInterval(pollingInterval);
+function startPolling(serverUrl: string, interval: number) {
+	let errorCount = 0;
+	const MAX_ERRORS = 3;
 
 	pollingInterval = setInterval(async () => {
 		try {
-			// Check for pending commands
-			const response = await fetch(`${SERVER_URL}/api/sync/events/pending`, {
+			const statusResponse = await fetch(`${serverUrl}/api/sync/status`, {
 				headers: { 'ngrok-skip-browser-warning': 'true' }
 			});
+			if (statusResponse.ok) {
+				errorCount = 0;
+				const data = await statusResponse.json() as { clients: { type: string }[] };
+				const hasMobile = data.clients?.some(c => c.type === 'mobile');
+				statusBar.setMobileStatus(hasMobile);
+			} else {
+				errorCount++;
+			}
 
-			if (response.ok) {
-				const data = await response.json();
-				if (data.events?.length > 0) {
+			// Check for pending sync events
+			const eventsResponse = await fetch(`${serverUrl}/api/sync/events/pending`, {
+				headers: { 'ngrok-skip-browser-warning': 'true' }
+			});
+			if (eventsResponse.ok) {
+				const data = await eventsResponse.json() as { events: any[] };
+				if (data.events && Array.isArray(data.events)) {
+					// Update server URL in handler before processing
+					syncHandler.setServerUrl(serverUrl);
 					for (const event of data.events) {
 						await syncHandler.handleEvent(event);
 					}
 				}
 			}
 		} catch (error) {
-			// Silent fail on polling
+			errorCount++;
+			if (errorCount >= MAX_ERRORS) {
+				statusBar.setDisconnected();
+			}
 		}
-	}, 500);
+	}, interval);
 }
 
-async function registerWorkspace() {
-	const workspaceFolders = vscode.workspace.workspaceFolders;
-	if (!workspaceFolders?.length) return;
-
+async function registerWorkspace(serverUrl: string) {
 	try {
-		await fetch(`${SERVER_URL}/api/sync/register-vscode`, {
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (!workspaceFolders || workspaceFolders.length === 0) {
+			return;
+		}
+
+		const workspace = workspaceFolders[0];
+		const projectPath = workspace.uri.fsPath;
+		const projectName = workspace.name;
+
+		// Register this VS Code instance as a project source
+		await fetch(`${serverUrl}/api/sync/register-vscode`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				'ngrok-skip-browser-warning': 'true'
 			},
 			body: JSON.stringify({
-				workspaces: workspaceFolders.map(f => ({
-					name: f.name,
-					path: f.uri.fsPath
-				}))
+				projectPath,
+				projectName,
+				type: 'vscode'
 			})
 		});
-		console.log('📂 Workspace registered');
+
+		console.log(`📁 Registered workspace: ${projectName}`);
 	} catch (error) {
 		console.error('Failed to register workspace:', error);
 	}
 }
 
+// Functions removed: scanAndRegisterAllProjects, getProjectFiles
+// Hidden files to show
+// Functions removed: scanAndRegisterAllProjects, getProjectFiles
+
+
 function showStatus() {
+	const config = vscode.workspace.getConfiguration('aether');
+	const serverUrl = config.get('serverUrl', 'https://aether-relay-server-production.up.railway.app');
+	const model = config.get('selectedModel', 'gemini');
+
 	vscode.window.showInformationMessage(
-		`AETHER Status\n` +
-		`Server: ${SERVER_URL}\n` +
-		`Connected: true`
+		`🧠 AETHER Status:\n` +
+		`Server: ${serverUrl}\n` +
+		`Connected: ${isConnected ? 'Yes ✅' : 'No ❌'}\n` +
+		`Model: ${model}`
 	);
 }
 
 export function deactivate() {
-	if (pollingInterval) {
-		clearInterval(pollingInterval);
-	}
+	disconnect();
+	chatProvider?.dispose();
 }
+

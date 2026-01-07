@@ -1,42 +1,54 @@
-/**
- * 📊 Status Bar Manager
- */
-
 import * as vscode from 'vscode';
 
 export class StatusBarManager {
-	private _statusBarItem: vscode.StatusBarItem;
-	private _connected: boolean = false;
+	private statusBarItem: vscode.StatusBarItem;
+	private mobileConnected = false;
 
-	constructor() {
-		this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-		this._statusBarItem.command = 'aether.showStatus';
+	constructor(context: vscode.ExtensionContext) {
+		this.statusBarItem = vscode.window.createStatusBarItem(
+			vscode.StatusBarAlignment.Right,
+			100
+		);
+		this.statusBarItem.command = 'aether.showStatus';
+		this.statusBarItem.show();
+		context.subscriptions.push(this.statusBarItem);
+
 		this.setDisconnected();
-		this._statusBarItem.show();
 	}
 
 	setConnecting() {
-		this._statusBarItem.text = '$(sync~spin) AETHER...';
-		this._statusBarItem.backgroundColor = undefined;
-	}
-
-	setConnected() {
-		this._connected = true;
-		this._statusBarItem.text = '$(check) AETHER';
-		this._statusBarItem.backgroundColor = undefined;
+		this.statusBarItem.text = '$(sync~spin) AETHER';
+		this.statusBarItem.tooltip = 'Connecting to relay server...';
+		this.statusBarItem.backgroundColor = undefined;
 	}
 
 	setDisconnected() {
-		this._connected = false;
-		this._statusBarItem.text = '$(x) AETHER';
-		this._statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+		this.mobileConnected = false;
+		this.statusBarItem.text = '$(device-mobile) AETHER';
+		this.statusBarItem.tooltip = 'AETHER: Disconnected from relay server';
+		this.statusBarItem.color = '#ef4444'; // Red
 	}
 
-	isConnected(): boolean {
-		return this._connected;
+	setConnected() {
+		this.statusBarItem.text = '$(device-mobile) AETHER';
+		this.statusBarItem.tooltip = 'AETHER: Connected to server';
+		this.statusBarItem.color = '#10b981'; // Green
 	}
 
-	dispose() {
-		this._statusBarItem.dispose();
+	setMobileStatus(connected: boolean) {
+		this.mobileConnected = connected;
+		if (connected) {
+			this.statusBarItem.text = '$(device-mobile) AETHER';
+			this.statusBarItem.tooltip = '📱 Mobile connected';
+			this.statusBarItem.color = '#10b981'; // Green
+		} else {
+			this.statusBarItem.text = '$(device-mobile) AETHER';
+			this.statusBarItem.tooltip = 'Waiting for mobile connection...';
+			this.statusBarItem.color = '#f59e0b'; // Orange/Yellow
+		}
+	}
+
+	isMobileConnected(): boolean {
+		return this.mobileConnected;
 	}
 }
