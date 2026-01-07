@@ -1,6 +1,6 @@
 /**
- * 🌐 AETHER Mobile - Cloud-Only Hook
- * Connexion au serveur Railway uniquement - pas de mode local
+ * 🌐 AETHER Mobile - Server-Only Hook
+ * Connexion au serveur Railway uniquement
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
@@ -46,19 +46,7 @@ interface ModelVariants {
   grok: string;
 }
 
-export interface GitStatus {
-  isRepo: boolean;
-  branch?: string;
-  modified?: number;
-  staged?: number;
-  untracked?: number;
-  ahead?: number;
-  behind?: number;
-  hasChanges?: boolean;
-}
-
 interface AppContextType {
-  // State
   messages: Message[];
   files: FileItem[];
   projects: Project[];
@@ -74,11 +62,10 @@ interface AppContextType {
   modelVariants: ModelVariants;
   availableModels: string[];
   apiKeys: ApiKeys;
-  gitStatus: GitStatus | null;
+  gitStatus: any;
   lastApplied: { undoId: number; path: string; timestamp: number } | null;
-  lintErrors: { file: string; line: number; message: string; severity: string }[];
-
-  // Actions
+  lintErrors: any[];
+  
   sendMessage: (content: string) => void;
   navigateToPath: (path: string) => void;
   executeCommand: (command: string) => void;
@@ -99,68 +86,43 @@ interface AppContextType {
   lintProject: () => void;
 }
 
-// ============== CONSTANTS ==============
-
-// 🌐 SERVEUR CLOUD UNIQUEMENT - Pas de localhost
+// 🌐 SERVEUR RAILWAY - URL FIXE
 const SERVER_URL = 'https://aether-relay-server-production.up.railway.app';
-
-const DEFAULT_MODEL_VARIANTS: ModelVariants = {
-  gemini: 'gemini-1.5-flash',
-  openai: 'gpt-4o',
-  claude: 'claude-3-5-sonnet-20241022',
-  deepseek: 'deepseek-chat',
-  grok: 'grok-2-latest',
-};
-
-const AVAILABLE_MODELS = ['gemini', 'openai', 'claude', 'deepseek', 'grok'];
-
-// ============== CONTEXT ==============
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Socket connection
   const [socket, setSocket] = useState<any>(null);
-
-  // Chat state
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Project state
+  const [files, setFiles] = useState<FileItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProject, setCurrentProjectState] = useState<Project | null>(null);
-  const [files, setFiles] = useState<FileItem[]>([]);
   const [currentPath, setCurrentPath] = useState<string>('/');
   const [fileContent, setFileContent] = useState<string>('');
-
-  // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
-
-  // Git state
-  const [gitStatus, setGitStatus] = useState<GitStatus>({ isRepo: false });
-
-  // Lint state
-  const [lintErrors, setLintErrors] = useState<{ file: string; line: number; message: string; severity: string }[]>([]);
-
-  // Connection state
+  const [gitStatus, setGitStatus] = useState<any>({ isRepo: false });
+  const [lintErrors, setLintErrors] = useState<any[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-
-  // Settings state
+  const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModelState] = useState('gemini');
   const [apiKeys, setApiKeysState] = useState<ApiKeys>({});
-  const [modelVariants, setModelVariantsState] = useState<ModelVariants>(DEFAULT_MODEL_VARIANTS);
+  const [modelVariants, setModelVariantsState] = useState<ModelVariants>({
+    gemini: 'gemini-1.5-flash',
+    openai: 'gpt-4o',
+    claude: 'claude-3-5-sonnet-20241022',
+    deepseek: 'deepseek-chat',
+    grok: 'grok-2-latest',
+  });
   const [lastApplied, setLastApplied] = useState<{ undoId: number; path: string; timestamp: number } | null>(null);
 
-  // Refs for socket callbacks
   const currentProjectRef = useRef<Project | null>(null);
   const currentPathRef = useRef<string>('/');
 
   useEffect(() => { currentProjectRef.current = currentProject; }, [currentProject]);
   useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
 
-  // ============== LOAD SETTINGS ==============
-
+  // Load settings from storage
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -191,31 +153,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadSettings();
   }, []);
 
-  // ============== SOCKET CONNECTION ==============
-
+  // 🌐 Connect to SERVER (Railway)
   useEffect(() => {
-    console.log('🌐 Connecting to cloud server:', SERVER_URL);
-
+    console.log('🌐 Connecting to server:', SERVER_URL);
+    
     const newSocket = io(SERVER_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
       timeout: 60000,
-      forceNew: true,
     });
 
-    // Connection events
     newSocket.on('connect', () => {
       setIsConnected(true);
-      console.log('✅ Connected to cloud server');
+      console.log('✅ Connected to server');
       newSocket.emit('register', { type: 'mobile' });
       newSocket.emit('getProjects');
     });
 
     newSocket.on('disconnect', () => {
       setIsConnected(false);
-      console.log('❌ Disconnected from cloud server');
+      console.log('❌ Disconnected');
     });
 
     newSocket.on('connect_error', (error: any) => {
@@ -223,23 +182,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsConnected(false);
     });
 
-    // Projects events
+    // Projects
     newSocket.on('projects', (data: Project[]) => {
-      console.log('📂 Received projects:', data.length);
+      console.log('📂 Projects:', data.length);
       setProjects(data);
     });
 
-    // Files events
+    // Files
     newSocket.on('files', (data: FileItem[]) => {
       setFiles(data);
     });
 
     newSocket.on('fileContent', (data: { content: string }) => {
-      console.log('📄 Received file content');
       setFileContent(data.content);
     });
 
-    // AI response events
+    // AI Response
     newSocket.on('aiResponse', (data: { content: string; codeBlocks?: { language: string; code: string }[] }) => {
       setIsLoading(false);
       const newMessage: Message = {
@@ -254,98 +212,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     newSocket.on('error', (error: string) => {
       setIsLoading(false);
-      console.error('Socket error:', error);
+      console.error('Error:', error);
     });
 
-    // Code apply events
+    // Code apply
     newSocket.on('codeApplied', (data: { success: boolean; path?: string; message?: string; error?: string; undoId?: number }) => {
       if (data.success) {
-        console.log('✅ Code applied:', data.path);
         if (data.undoId && data.path) {
           setLastApplied({ undoId: data.undoId, path: data.path, timestamp: Date.now() });
         }
-        Alert.alert('✅ Code Applied!', data.message || `Saved to ${data.path}`);
-        if (currentProjectRef.current) {
-          newSocket.emit('getFiles', { path: currentPathRef.current || '/', projectPath: currentProjectRef.current.path });
-        }
+        Alert.alert('✅ Applied!', data.message || `Saved to ${data.path}`);
       } else {
-        Alert.alert('❌ Apply Failed', data.error || 'Unknown error');
+        Alert.alert('❌ Failed', data.error || 'Unknown error');
       }
     });
 
-    // Undo events
-    newSocket.on('undoResult', (data: { success: boolean; path?: string; message?: string; error?: string }) => {
+    // Terminal
+    newSocket.on('terminalOutput', (data: { output: string; exitCode?: number }) => {
+      if (data.output) {
+        setTerminalOutput(prev => [...prev, ...data.output.split('\n')]);
+      }
+      if (data.exitCode !== undefined) {
+        setLastExitCode(data.exitCode);
+      }
+    });
+
+    // Git
+    newSocket.on('gitStatus', (data: any) => setGitStatus(data));
+    newSocket.on('gitCommitResult', (data: any) => {
       if (data.success) {
-        Alert.alert('↩️ Undone!', data.message || `Reverted ${data.path}`);
-        setLastApplied(null);
-        if (currentProjectRef.current) {
-          newSocket.emit('getFiles', { path: currentPathRef.current || '/', projectPath: currentProjectRef.current.path });
-        }
+        Alert.alert('✅ Committed!', data.message);
       } else {
-        Alert.alert('❌ Undo Failed', data.error || 'Unknown error');
+        Alert.alert('❌ Failed', data.error);
       }
     });
-
-    // Lint events
-    newSocket.on('lintResult', (data: { success: boolean; errors: any[]; totalErrors?: number; error?: string }) => {
+    newSocket.on('gitPushResult', (data: any) => {
       if (data.success) {
-        setLintErrors(data.errors || []);
-        if (data.errors.length === 0) {
-          Alert.alert('✅ No Lint Errors', 'Your project has no lint errors!');
-        } else {
-          Alert.alert('🔍 Lint Errors Found', `Found ${data.totalErrors || data.errors.length} errors.`);
-        }
+        Alert.alert('✅ Pushed!', data.message);
       } else {
-        Alert.alert('❌ Lint Failed', data.error || 'Unknown error');
+        Alert.alert('❌ Failed', data.error);
       }
     });
 
-    // Delete events
+    // Delete
     newSocket.on('deleteResult', (data: { success: boolean; path?: string; error?: string }) => {
       if (data.success) {
-        Alert.alert('✅ Deleted!', `${data.path} has been deleted`);
-        if (currentProjectRef.current) {
-          newSocket.emit('getFiles', { path: currentPathRef.current || '/', projectPath: currentProjectRef.current.path });
-        }
+        Alert.alert('✅ Deleted!', `${data.path} deleted`);
       } else {
-        Alert.alert('❌ Delete Failed', data.error || 'Unknown error');
+        Alert.alert('❌ Failed', data.error);
       }
     });
 
-    // Git events
-    newSocket.on('gitStatus', (data: GitStatus) => {
-      setGitStatus(data);
-    });
-
-    newSocket.on('gitCommitResult', (data: { success: boolean; message?: string; error?: string }) => {
-      if (data.success) {
-        Alert.alert('✅ Committed!', data.message || 'Changes committed');
-        if (currentProjectRef.current) {
-          newSocket.emit('gitStatus', { projectPath: currentProjectRef.current.path });
-        }
-      } else {
-        Alert.alert('❌ Commit Failed', data.error || 'Unknown error');
-      }
-    });
-
-    newSocket.on('gitPushResult', (data: { success: boolean; message?: string; error?: string; suggestion?: string }) => {
-      if (data.success) {
-        Alert.alert('✅ Pushed!', data.message || 'Changes pushed to remote');
-        if (currentProjectRef.current) {
-          newSocket.emit('gitStatus', { projectPath: currentProjectRef.current.path });
-        }
-      } else {
-        const errorMsg = data.suggestion ? `${data.error}\n\n💡 ${data.suggestion}` : data.error || 'Unknown error';
-        Alert.alert('❌ Push Failed', errorMsg);
-      }
-    });
-
-    // Conversation history events
-    newSocket.on('conversationHistory', (data: { messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }>; projectPath: string }) => {
-      console.log(`📜 Received ${data.messages.length} messages from server`);
+    // History
+    newSocket.on('conversationHistory', (data: { messages: any[]; projectPath: string }) => {
       if (data.messages.length > 0) {
         const loadedMessages: Message[] = data.messages.map((m, i) => ({
-          id: `history-${i}-${Date.now()}`,
+          id: `history-${i}`,
           role: m.role,
           content: m.content,
           timestamp: new Date(m.createdAt),
@@ -356,24 +278,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    newSocket.on('conversationHistoryCleared', (data: { success: boolean; deleted?: number; error?: string }) => {
+    newSocket.on('conversationHistoryCleared', (data: { success: boolean; deleted?: number }) => {
       if (data.success) {
         setMessages([]);
-        Alert.alert('✅ History Cleared', `${data.deleted} messages deleted`);
-      } else {
-        Alert.alert('❌ Clear Failed', data.error || 'Unknown error');
+        Alert.alert('✅ Cleared', `${data.deleted} messages deleted`);
       }
     });
 
     setSocket(newSocket);
-
-    return () => {
-      newSocket.disconnect();
-    };
+    return () => { newSocket.disconnect(); };
   }, []);
 
-  // ============== PROJECT CHANGE EFFECT ==============
-
+  // Load project data when project changes
   useEffect(() => {
     if (socket && currentProject) {
       socket.emit('getFiles', { path: '/', projectPath: currentProject.path });
@@ -417,7 +333,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const openFile = useCallback((path: string) => {
     if (!socket || !currentProject) return;
     socket.emit('getFileContent', { path, projectPath: currentProject.path });
-    socket.emit('file:open', { path, projectPath: currentProject.path });
   }, [socket, currentProject]);
 
   const saveFile = useCallback((path: string, content: string) => {
@@ -431,14 +346,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTerminalOutput(prev => [...prev, `$ ${command}`]);
     setLastExitCode(null);
     socket.emit('terminal', { command, projectPath: currentProject?.path });
-    socket.once('terminalOutput', (data: { output: string; exitCode?: number }) => {
-      if (data.output) {
-        setTerminalOutput(prev => [...prev, ...data.output.split('\n')]);
-      }
-      if (data.exitCode !== undefined) {
-        setLastExitCode(data.exitCode);
-      }
-    });
   }, [socket, currentProject]);
 
   const setSelectedModel = useCallback(async (model: string) => {
@@ -449,8 +356,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setCurrentProject = useCallback(async (project: Project) => {
     setCurrentProjectState(project);
     await AsyncStorage.setItem('currentProject', JSON.stringify(project));
-    if (socket && project) {
-      socket.emit('setProject', { name: project.name, path: project.path, folder: project.folder });
+    if (socket) {
+      socket.emit('setProject', project);
     }
   }, [socket]);
 
@@ -503,11 +410,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const undoLastChange = useCallback(() => {
     if (!socket || !currentProject || !lastApplied) return;
-    if (Date.now() - lastApplied.timestamp > 60000) {
-      Alert.alert('⏰ Expired', 'Undo window has expired (60 seconds)');
-      setLastApplied(null);
-      return;
-    }
     socket.emit('undoChange', { undoId: lastApplied.undoId, projectPath: currentProject.path });
   }, [socket, currentProject, lastApplied]);
 
@@ -515,8 +417,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!socket || !currentProject) return;
     socket.emit('lintProject', { projectPath: currentProject.path });
   }, [socket, currentProject]);
-
-  // ============== CONTEXT VALUE ==============
 
   return (
     <AppContext.Provider value={{
@@ -533,7 +433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isLoading,
       serverUrl: SERVER_URL,
       selectedModel,
-      availableModels: AVAILABLE_MODELS,
+      availableModels: ['gemini', 'openai', 'claude', 'deepseek', 'grok'],
       sendMessage,
       navigateToPath,
       executeCommand,
