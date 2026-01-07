@@ -166,11 +166,11 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
 }
 
 class ProjectItem extends vscode.TreeItem {
-    constructor(
-        public readonly label: string,
-        public readonly projectPath: string
-    ) {
+    public readonly projectPath: string;
+
+    constructor(label: string, projectPath: string) {
         super(label, vscode.TreeItemCollapsibleState.None);
+        this.projectPath = projectPath;
         this.tooltip = projectPath;
         this.contextValue = 'project';
         this.iconPath = new vscode.ThemeIcon('folder');
