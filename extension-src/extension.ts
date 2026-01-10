@@ -3,6 +3,7 @@ import { StatusBarManager } from './statusBar';
 import { SyncHandler } from './syncHandler';
 import { ChatPanelProvider } from './chatPanel';
 import { MobileProjectsProvider } from './mobileProjects';
+import { httpGet, httpPost } from './httpClient';
 
 let statusBar: StatusBarManager;
 let syncHandler: SyncHandler;
@@ -80,10 +81,8 @@ async function connect() {
 
 	try {
 		// Test connection
-		const response = await fetch(`${serverUrl}/api/sync/status`, {
-			headers: { 'ngrok-skip-browser-warning': 'true' }
-		});
-		if (!response.ok) {
+		const response = await httpGet(`${serverUrl}/api/sync/status`);
+		if (!response.success) {
 			throw new Error('Server not reachable');
 		}
 
@@ -126,28 +125,22 @@ function startPolling(serverUrl: string, interval: number) {
 
 	pollingInterval = setInterval(async () => {
 		try {
-			const statusResponse = await fetch(`${serverUrl}/api/sync/status`, {
-				headers: { 'ngrok-skip-browser-warning': 'true' }
-			});
-			if (statusResponse.ok) {
+			const statusResponse = await httpGet(`${serverUrl}/api/sync/status`);
+			if (statusResponse.success) {
 				errorCount = 0;
-				const data = await statusResponse.json() as { clients: { type: string }[] };
-				const hasMobile = data.clients?.some(c => c.type === 'mobile');
-				statusBar.setMobileStatus(hasMobile);
+				const data = statusResponse.data as { clients: number; hasMobile: boolean };
+				statusBar.setMobileStatus(data.hasMobile);
 			} else {
 				errorCount++;
 			}
 
 			// Check for pending sync events
-			const eventsResponse = await fetch(`${serverUrl}/api/sync/events/pending`, {
-				headers: { 'ngrok-skip-browser-warning': 'true' }
-			});
-			if (eventsResponse.ok) {
-				const data = await eventsResponse.json() as { events: any[] };
-				if (data.events && Array.isArray(data.events)) {
-					// Update server URL in handler before processing
+			const eventsResponse = await httpGet(`${serverUrl}/api/sync/events/pending`);
+			if (eventsResponse.success && eventsResponse.data?.events) {
+				const events = eventsResponse.data.events as any[];
+				if (Array.isArray(events)) {
 					syncHandler.setServerUrl(serverUrl);
-					for (const event of data.events) {
+					for (const event of events) {
 						await syncHandler.handleEvent(event);
 					}
 				}
@@ -173,17 +166,10 @@ async function registerWorkspace(serverUrl: string) {
 		const projectName = workspace.name;
 
 		// Register this VS Code instance as a project source
-		await fetch(`${serverUrl}/api/sync/register-vscode`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'ngrok-skip-browser-warning': 'true'
-			},
-			body: JSON.stringify({
-				projectPath,
-				projectName,
-				type: 'vscode'
-			})
+		await httpPost(`${serverUrl}/api/sync/register-vscode`, {
+			projectPath,
+			projectName,
+			type: 'vscode'
 		});
 
 		console.log(`📁 Registered workspace: ${projectName}`);

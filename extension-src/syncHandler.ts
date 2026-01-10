@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
+import { httpPost } from './httpClient';
 
 interface SyncEvent {
 	type: string;
@@ -64,17 +65,10 @@ export class SyncHandler {
 			const files = this.getFileTree(projectPath, '', 3);
 
 			// Send to server
-			await fetch(`${this.serverUrl}/api/sync/register-project`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'ngrok-skip-browser-warning': 'true'
-				},
-				body: JSON.stringify({
-					projectPath,
-					projectName,
-					files
-				})
+			await httpPost(`${this.serverUrl}/api/sync/register-project`, {
+				projectPath,
+				projectName,
+				files
 			});
 
 			console.log(`☁️ Synced ${files.length} items to cloud`);
@@ -286,19 +280,12 @@ export class SyncHandler {
 			}
 
 			// Send back to server
-			await fetch(`${this.serverUrl}/api/sync/relay-response`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'ngrok-skip-browser-warning': 'true'
-				},
-				body: JSON.stringify({
-					requesterId: data.requesterId,
-					type: 'file:content',
-					data: {
-						content: error ? `Error: ${error}` : content
-					}
-				})
+			await httpPost(`${this.serverUrl}/api/sync/relay-response`, {
+				requesterId: data.requesterId,
+				type: 'file:content',
+				data: {
+					content: error ? `Error: ${error}` : content
+				}
 			});
 
 		} catch (error: any) {
@@ -384,20 +371,13 @@ export class SyncHandler {
 
 	private async sendToMobile(data: string) {
 		try {
-			await fetch(`${this.serverUrl}/api/sync/relay-response`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'ngrok-skip-browser-warning': 'true'
-				},
-				body: JSON.stringify({
-					requesterId: 'broadcast', // Server should handle broadcast or we need real ID
-					type: 'terminal:output',
-					data: { output: data }
-				})
+			await httpPost(`${this.serverUrl}/api/sync/relay-response`, {
+				requesterId: 'broadcast',
+				type: 'terminal:output',
+				data: { output: data }
 			});
 		} catch (e) {
-			// Ignore fetch errors
+			// Ignore errors
 		}
 	}
 
@@ -523,20 +503,13 @@ export class SyncHandler {
 
 	private async sendResult(type: string, data: any) {
 		try {
-			await fetch(`${this.serverUrl}/api/sync/relay-response`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'ngrok-skip-browser-warning': 'true'
-				},
-				body: JSON.stringify({
-					requesterId: 'broadcast',
-					type,
-					data
-				})
+			await httpPost(`${this.serverUrl}/api/sync/relay-response`, {
+				requesterId: 'broadcast',
+				type,
+				data
 			});
 		} catch (e) {
-			// Ignore fetch errors
+			// Ignore errors
 		}
 	}
 }
