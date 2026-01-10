@@ -141,7 +141,13 @@ export class SyncHandler {
 	async handleEvent(event: SyncEvent) {
 		switch (event.type) {
 			case 'file:apply':
-				await this.handleFileApply(event.data);
+				// Normalize: server may send 'path' or 'filePath'
+				const applyData = {
+					filePath: event.data.filePath || event.data.path,
+					content: event.data.content,
+					projectPath: event.data.projectPath
+				};
+				await this.handleFileApply(applyData);
 				break;
 			case 'file:opened':
 				await this.handleFileOpen(event.data);
@@ -155,6 +161,21 @@ export class SyncHandler {
 				break;
 			case 'project:changed':
 				await this.handleProjectChange(event.data);
+				break;
+			case 'file:delete':
+				await this.handleFileDelete(event.data);
+				break;
+			case 'folder:delete':
+				await this.handleFolderDelete(event.data);
+				break;
+			case 'git:status':
+				await this.handleGitStatus(event.data);
+				break;
+			case 'git:commit':
+				await this.handleGitCommit(event.data);
+				break;
+			case 'git:push':
+				await this.handleGitPush(event.data);
 				break;
 			case 'terminal:resize':
 				// Maybe handle resize later
@@ -396,6 +417,126 @@ export class SyncHandler {
 			}
 		} catch (error) {
 			console.error('Failed to handle project change:', error);
+		}
+	}
+
+	// ========== FILE/FOLDER DELETE ==========
+
+	private async handleFileDelete(data: { filePath: string; projectPath: string }) {
+		try {
+			let targetPath = data.filePath;
+
+			if (!path.isAbsolute(targetPath) && data.projectPath) {
+				targetPath = path.join(data.projectPath, targetPath);
+			} else if (!path.isAbsolute(targetPath) && vscode.workspace.workspaceFolders) {
+				targetPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, targetPath);
+			}
+
+			if (fs.existsSync(targetPath)) {
+				fs.unlinkSync(targetPath);
+				vscode.window.showInformationMessage(`🗑️ Deleted: ${path.basename(targetPath)}`);
+				await this.sendResult('delete:result', { success: true, path: targetPath });
+			} else {
+				await this.sendResult('delete:result', { success: false, error: 'File not found' });
+			}
+		} catch (error: any) {
+			await this.sendResult('delete:result', { success: false, error: error.message });
+		}
+	}
+
+	private async handleFolderDelete(data: { folderPath: string; projectPath: string }) {
+		try {
+			let targetPath = data.folderPath;
+
+			if (!path.isAbsolute(targetPath) && data.projectPath) {
+				targetPath = path.join(data.projectPath, targetPath);
+			} else if (!path.isAbsolute(targetPath) && vscode.workspace.workspaceFolders) {
+				targetPath = path.join(vscode.workspace.workspaceFolders[0].uri.fsPath, targetPath);
+			}
+
+			if (fs.existsSync(targetPath)) {
+				fs.rmSync(targetPath, { recursive: true });
+				vscode.window.showInformationMessage(`🗑️ Deleted folder: ${path.basename(targetPath)}`);
+				await this.sendResult('delete:result', { success: true, path: targetPath });
+			} else {
+				await this.sendResult('delete:result', { success: false, error: 'Folder not found' });
+			}
+		} catch (error: any) {
+			await this.sendResult('delete:result', { success: false, error: error.message });
+		}
+	}
+
+	// ========== GIT OPERATIONS ==========
+
+	private async handleGitStatus(data: { projectPath: string }) {
+		try {
+			const cwd = data.projectPath || vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+			if (!cwd) return;
+
+			const { execSync } = require('child_process');
+			const status = execSync('git status --porcelain', { cwd, encoding: 'utf-8' });
+			const branch = execSync('git branch --show-current', { cwd, encoding: 'utf-8' }).trim();
+
+			await this.sendResult('git:statusResult', {
+				success: true,
+				branch,
+				status: status.split('\n').filter(Boolean).map((line: string) => ({
+					status: line.substring(0, 2).trim(),
+					file: line.substring(3)
+				}))
+			});
+		} catch (error: any) {
+			await this.sendResult('git:statusResult', { success: false, error: error.message });
+		}
+	}
+
+	private async handleGitCommit(data: { projectPath: string; message: string }) {
+		try {
+			const cwd = data.projectPath || vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+			if (!cwd) return;
+
+			const { execSync } = require('child_process');
+			execSync('git add -A', { cwd });
+			const result = execSync(`git commit -m "${data.message.replace(/"/g, '\\"')}"`, { cwd, encoding: 'utf-8' });
+
+			vscode.window.showInformationMessage(`📱 Git commit: ${data.message}`);
+			await this.sendResult('git:commitResult', { success: true, message: result });
+		} catch (error: any) {
+			await this.sendResult('git:commitResult', { success: false, error: error.message });
+		}
+	}
+
+	private async handleGitPush(data: { projectPath: string }) {
+		try {
+			const cwd = data.projectPath || vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+			if (!cwd) return;
+
+			const { execSync } = require('child_process');
+			const result = execSync('git push', { cwd, encoding: 'utf-8' });
+
+			vscode.window.showInformationMessage(`📱 Git push completed`);
+			await this.sendResult('git:pushResult', { success: true, message: result });
+		} catch (error: any) {
+			await this.sendResult('git:pushResult', { success: false, error: error.message });
+		}
+	}
+
+	private async sendResult(type: string, data: any) {
+		try {
+			await fetch(`${this.serverUrl}/api/sync/relay-response`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'ngrok-skip-browser-warning': 'true'
+				},
+				body: JSON.stringify({
+					requesterId: 'broadcast',
+					type,
+					data
+				})
+			});
+		} catch (e) {
+			// Ignore fetch errors
 		}
 	}
 }

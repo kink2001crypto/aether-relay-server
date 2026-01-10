@@ -10,8 +10,8 @@ interface SyncedProject {
 }
 
 export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectItem> {
-    private _onDidChangeTreeData: vscode.EventEmitter<ProjectItem | undefined | null | void> = new vscode.EventEmitter<ProjectItem | undefined | null | void>();
-    readonly onDidChangeTreeData: vscode.Event<ProjectItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData: vscode.EventEmitter<ProjectItem | undefined | null> = new vscode.EventEmitter<ProjectItem | undefined | null>();
+    readonly onDidChangeTreeData: vscode.Event<ProjectItem | undefined | null> = this._onDidChangeTreeData.event;
 
     private _syncedProjects: SyncedProject[] = [];
     private _serverUrl: string = 'https://aether-relay-server-production.up.railway.app';
@@ -284,10 +284,10 @@ class ProjectItem extends vscode.TreeItem {
         if (itemType === 'project') {
             this.tooltip = projectPath;
             this.description = projectPath.replace(os.homedir(), '~');
-            this.iconPath = new vscode.ThemeIcon('folder');
+            this.iconPath = { id: 'folder' };
             this.contextValue = 'syncedProject';
         } else {
-            this.iconPath = new vscode.ThemeIcon('info');
+            this.iconPath = { id: 'info' };
         }
     }
 }

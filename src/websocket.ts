@@ -1,36 +1,30 @@
 /**
  * ⚡ WebSocket Handler - Real-time communication
+ * Uses unified project cache shared with API
  */
 
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import { loadProjects, saveProjects, saveProject, getProjectFiles, saveMessage, getMessages, clearMessages, Project } from './db/database.js';
+import { saveMessage, getMessages, clearMessages } from './db/database.js';
 import { callAI } from './ai/router.js';
-
-// In-memory project cache (loaded from DB on start)
-const projectCache: Map<string, Project & { files?: any[] }> = new Map();
-
-// Load from DB on startup
-function loadFromDB() {
-    const projects = loadProjects();
-    for (const p of projects) {
-        projectCache.set(p.path, p);
-    }
-    console.log(`📂 Loaded ${projects.length} projects from database`);
-}
+import {
+    getProjects,
+    getProject,
+    registerProjects,
+    getFilesAtPath,
+    getFileContent,
+    addPendingEvent,
+    setSocketIO
+} from './cache/projectCache.js';
 
 export function setupWebSocket(io: SocketIOServer) {
-    // Load projects from DB
-    loadFromDB();
+    // Share socket.io instance with cache
+    setSocketIO(io);
 
     io.on('connection', (socket: Socket) => {
         console.log(`⚡ Client connected: ${socket.id}`);
 
         // Send projects on connect
-        const projects = Array.from(projectCache.values()).map(p => ({
-            name: p.name,
-            path: p.path,
-            folder: '☁️ Cloud'
-        }));
+        const projects = getProjects();
         socket.emit('projects', projects);
 
         // ========== REGISTER ==========
@@ -42,41 +36,23 @@ export function setupWebSocket(io: SocketIOServer) {
         // ========== PROJECTS ==========
 
         socket.on('getProjects', () => {
-            const projects = Array.from(projectCache.values()).map(p => ({
-                name: p.name,
-                path: p.path,
-                folder: '☁️ Cloud'
-            }));
+            const projects = getProjects();
             socket.emit('projects', projects);
         });
 
         socket.on('setProject', (data: { name: string; path: string; folder?: string }) => {
             console.log(`📂 Project selected: ${data.name}`);
             socket.broadcast.emit('project:changed', data);
+
+            // Also add to pending events for polling VS Code clients
+            addPendingEvent('project:changed', data);
         });
 
         // Register projects from VS Code extension
         socket.on('registerProjects', (data: { projects: Array<{ name: string; path: string; files?: any[] }> }) => {
-            console.log(`📂 Registering ${data.projects.length} projects`);
+            console.log(`📂 Registering ${data.projects.length} projects via WebSocket`);
 
-            for (const p of data.projects) {
-                projectCache.set(p.path, {
-                    path: p.path,
-                    name: p.name,
-                    files: p.files
-                });
-            }
-
-            // Persist to DB
-            saveProjects(data.projects.map(p => ({ path: p.path, name: p.name, files: p.files })));
-
-            // Broadcast updated list
-            const projects = Array.from(projectCache.values()).map(p => ({
-                name: p.name,
-                path: p.path,
-                folder: '☁️ Cloud'
-            }));
-            io.emit('projects', projects);
+            registerProjects(data.projects);
 
             socket.emit('projectsRegistered', { success: true, count: data.projects.length });
         });
@@ -90,28 +66,7 @@ export function setupWebSocket(io: SocketIOServer) {
                 return;
             }
 
-            const project = projectCache.get(projectPath);
-            if (!project || !project.files) {
-                console.log(`⚠️ No files for project: ${projectPath}`);
-                socket.emit('files', []);
-                return;
-            }
-
-            // Navigate to requested path
-            let files = project.files;
-            if (data.path && data.path !== '/') {
-                const parts = data.path.split('/').filter(Boolean);
-                for (const part of parts) {
-                    const dir = files.find(f => f.name === part && f.type === 'directory');
-                    if (dir && dir.children) {
-                        files = dir.children;
-                    } else {
-                        files = [];
-                        break;
-                    }
-                }
-            }
-
+            const files = getFilesAtPath(projectPath, data.path || '');
             socket.emit('files', files);
         });
 
@@ -122,42 +77,8 @@ export function setupWebSocket(io: SocketIOServer) {
                 return;
             }
 
-            const project = projectCache.get(projectPath);
-            if (!project || !project.files) {
-                socket.emit('fileContent', { content: '', error: 'Project not found' });
-                return;
-            }
-
-            // Find file in tree
-            const findFile = (items: any[], filePath: string): any | null => {
-                const parts = filePath.split('/').filter(Boolean);
-                let current = items;
-
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts[i];
-                    const item = current.find(f => f.name === part);
-
-                    if (!item) return null;
-
-                    if (i === parts.length - 1) {
-                        return item;
-                    }
-
-                    if (item.type === 'directory' && item.children) {
-                        current = item.children;
-                    } else {
-                        return null;
-                    }
-                }
-                return null;
-            };
-
-            const file = findFile(project.files, data.path);
-            if (file && file.content) {
-                socket.emit('fileContent', { content: file.content });
-            } else {
-                socket.emit('fileContent', { content: '', error: 'File not found or no content' });
-            }
+            const result = getFileContent(projectPath, data.path);
+            socket.emit('fileContent', result);
         });
 
         // ========== CHAT ==========
@@ -174,7 +95,7 @@ export function setupWebSocket(io: SocketIOServer) {
                 // Build context from project files
                 let projectContext = '';
                 if (data.projectPath) {
-                    const project = projectCache.get(data.projectPath);
+                    const project = getProject(data.projectPath);
                     if (project?.files) {
                         const extractContent = (items: any[], basePath = ''): string[] => {
                             const contents: string[] = [];
@@ -244,12 +165,21 @@ export function setupWebSocket(io: SocketIOServer) {
 
         socket.on('applyCode', (data: { code: string; filePath: string; projectPath: string }) => {
             console.log(`📝 Apply code to: ${data.filePath}`);
-            // In cloud mode, we relay this to VS Code
+
+            // Broadcast to VS Code clients via WebSocket
             socket.broadcast.emit('file:apply', {
                 path: data.filePath,
                 content: data.code,
                 projectPath: data.projectPath
             });
+
+            // Also add to pending events for polling VS Code clients
+            addPendingEvent('file:apply', {
+                filePath: data.filePath,
+                content: data.code,
+                projectPath: data.projectPath
+            });
+
             socket.emit('codeApplied', { success: true, path: data.filePath, message: 'Sent to VS Code' });
         });
 
@@ -257,8 +187,15 @@ export function setupWebSocket(io: SocketIOServer) {
 
         socket.on('terminal', (data: { command: string; projectPath?: string }) => {
             console.log(`🖥️ Terminal: ${data.command}`);
-            // Relay to VS Code
+
+            // Broadcast to VS Code clients
             socket.broadcast.emit('terminal:exec', {
+                command: data.command,
+                projectPath: data.projectPath
+            });
+
+            // Also add to pending events for polling
+            addPendingEvent('terminal', {
                 command: data.command,
                 projectPath: data.projectPath
             });
@@ -273,14 +210,17 @@ export function setupWebSocket(io: SocketIOServer) {
 
         socket.on('gitStatus', (data: { projectPath: string }) => {
             socket.broadcast.emit('git:status', data);
+            addPendingEvent('git:status', data);
         });
 
         socket.on('gitCommit', (data: { projectPath: string; message: string }) => {
             socket.broadcast.emit('git:commit', data);
+            addPendingEvent('git:commit', data);
         });
 
         socket.on('gitPush', (data: { projectPath: string }) => {
             socket.broadcast.emit('git:push', data);
+            addPendingEvent('git:push', data);
         });
 
         // Git responses from VS Code
@@ -292,13 +232,39 @@ export function setupWebSocket(io: SocketIOServer) {
 
         socket.on('deleteFile', (data: { filePath: string; projectPath: string }) => {
             socket.broadcast.emit('file:delete', data);
+            addPendingEvent('file:delete', data);
         });
 
         socket.on('deleteFolder', (data: { folderPath: string; projectPath: string }) => {
             socket.broadcast.emit('folder:delete', data);
+            addPendingEvent('folder:delete', data);
         });
 
         socket.on('delete:result', (data: any) => socket.broadcast.emit('deleteResult', data));
+
+        // ========== FILE CONTENT REQUEST ==========
+
+        socket.on('file:content-request', (data: { path: string; projectPath: string }) => {
+            // First try to get from cache
+            const result = getFileContent(data.projectPath, data.path);
+
+            if (result.content) {
+                socket.emit('fileContent', result);
+            } else {
+                // Request from VS Code if not in cache
+                socket.broadcast.emit('file:content-request', {
+                    path: data.path,
+                    projectPath: data.projectPath,
+                    requesterId: socket.id
+                });
+
+                addPendingEvent('file:content-request', {
+                    path: data.path,
+                    projectPath: data.projectPath,
+                    requesterId: socket.id
+                });
+            }
+        });
 
         // ========== DISCONNECT ==========
 
