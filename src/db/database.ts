@@ -9,8 +9,21 @@ import fs from 'fs';
 let db: Database.Database;
 
 export function initDatabase(): void {
-    // Use /tmp for Railway, local folder for dev
-    const dbDir = process.env.RAILWAY_ENVIRONMENT ? '/tmp' : './data';
+    // Priority: RAILWAY_VOLUME > /data (if volume mounted) > ./data (local dev)
+    let dbDir: string;
+
+    if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
+        // Railway Volume is configured
+        dbDir = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+        console.log('💾 Using Railway Volume for persistence');
+    } else if (process.env.RAILWAY_ENVIRONMENT) {
+        // On Railway but no volume - use /data (user should mount a volume there)
+        dbDir = '/data';
+        console.log('⚠️ Railway detected but no volume. Mount a volume at /data for persistence!');
+    } else {
+        // Local development
+        dbDir = './data';
+    }
 
     if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
