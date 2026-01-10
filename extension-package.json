@@ -2,7 +2,7 @@
 	"name": "aether-mobile",
 	"displayName": "AETHER AI Assistant",
 	"description": "AI-powered coding assistant - Chat, edit files, run commands from VS Code and mobile",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"publisher": "aether",
 	"engines": {
 		"vscode": "^1.85.0"

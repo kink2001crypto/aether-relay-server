@@ -1,0 +1,28 @@
+# Ignore everything except extension essentials
+**/*
+
+# Include only what's needed
+!out/**
+!resources/**
+!package.json
+!extension-package.json
+
+# Explicitly exclude heavy folders
+node_modules/**
+mobile-app/**
+src/**
+dist/**
+extension-src/**
+data/**
+.agent/**
+.claude/**
+_bmad/**
+*.ts
+*.map
+.git/**
+.gitignore
+*.md
+*.lock
+tsconfig.json
+extension-tsconfig.json
+package-*.json

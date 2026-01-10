@@ -4,8 +4,8 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Alert } from 'react-native';
-import { io } from 'socket.io-client';
+import { Alert, AppState, AppStateStatus } from 'react-native';
+import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ============== TYPES ==============
@@ -153,17 +153,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadSettings();
   }, []);
 
-  // 🌐 Connect to SERVER (Railway)
+  // 🌐 Connect to SERVER (Railway) with network resilience
   useEffect(() => {
     console.log('🌐 Connecting to server:', SERVER_URL);
-    
+
     const newSocket = io(SERVER_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: Infinity, // Never give up
       reconnectionDelay: 1000,
-      timeout: 60000,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
+      timeout: 30000,
+      forceNew: false,
     });
+
+    // Track socket reference for reconnection
+    const socketRef = { current: newSocket };
 
     newSocket.on('connect', () => {
       setIsConnected(true);
@@ -172,15 +178,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newSocket.emit('getProjects');
     });
 
-    newSocket.on('disconnect', () => {
+    newSocket.on('disconnect', (reason) => {
       setIsConnected(false);
-      console.log('❌ Disconnected');
+      console.log('❌ Disconnected:', reason);
+      // Force reconnect if server disconnected us
+      if (reason === 'io server disconnect') {
+        newSocket.connect();
+      }
     });
 
     newSocket.on('connect_error', (error: any) => {
       console.log('⚠️ Connection error:', error.message);
       setIsConnected(false);
     });
+
+    newSocket.on('reconnect', (attemptNumber: number) => {
+      console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+      newSocket.emit('register', { type: 'mobile' });
+      newSocket.emit('getProjects');
+    });
+
+    newSocket.on('reconnect_attempt', (attemptNumber: number) => {
+      console.log('🔄 Reconnecting... attempt', attemptNumber);
+    });
+
+    // 📱 Handle app state changes (background/foreground)
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('📱 App became active, checking connection...');
+        if (!socketRef.current.connected) {
+          console.log('🔄 Reconnecting socket...');
+          socketRef.current.connect();
+        }
+      }
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // 🔄 Periodic connection check (handles WiFi <-> LTE)
+    const connectionCheck = setInterval(() => {
+      if (!socketRef.current.connected) {
+        console.log('🔄 Connection check: reconnecting...');
+        socketRef.current.connect();
+      }
+    }, 5000); // Check every 5 seconds
 
     // Projects
     newSocket.on('projects', (data: Project[]) => {
@@ -286,7 +327,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     setSocket(newSocket);
-    return () => { newSocket.disconnect(); };
+    return () => {
+      appStateSubscription.remove();
+      clearInterval(connectionCheck);
+      newSocket.disconnect();
+    };
   }, []);
 
   // Load project data when project changes

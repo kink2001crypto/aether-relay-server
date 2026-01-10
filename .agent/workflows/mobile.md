@@ -13,5 +13,5 @@ cd /Users/juniorlaflamme/AETHER-Server/mobile-app && npm install
 
 2. Start Expo:
 ```bash
-npx expo start
+cd /Users/juniorlaflamme/AETHER-Server/mobile-app && npx expo start
 ```

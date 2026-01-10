@@ -21,18 +21,30 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
         // Load saved projects from storage
         this._loadSavedProjects();
 
-        // Load server URL from settings
+        // Load server URL from settings - FORCE CLOUD URL
         const config = vscode.workspace.getConfiguration('aether');
-        this._serverUrl = config.get('serverUrl', this._serverUrl);
+        let serverUrl = config.get('serverUrl', this._serverUrl);
 
-        // AUTO-SYNC: Push saved projects to server on startup
+        // FIX: Always use cloud URL (localhost doesn't work on mobile/LTE)
+        if (typeof serverUrl === 'string' && (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1'))) {
+            serverUrl = 'https://aether-relay-server-production.up.railway.app';
+        }
+        this._serverUrl = serverUrl as string;
+
+        // DEBUG: Show that extension loaded
+        vscode.window.showInformationMessage(`🔧 AETHER v2.1 loaded - ${this._syncedProjects.length} projets locaux`);
+
+        // AUTO-SYNC: Push saved projects to server on startup (delayed to ensure URL is set)
         if (this._syncedProjects.length > 0) {
-            console.log(`📤 Auto-syncing ${this._syncedProjects.length} saved projects to server`);
-            this._syncToCloud().then(() => {
-                vscode.window.showInformationMessage(`✅ ${this._syncedProjects.length} projet(s) synchronisé(s) au cloud`);
-            }).catch(err => {
-                console.error('Auto-sync failed:', err);
-            });
+            setTimeout(async () => {
+                vscode.window.showInformationMessage(`📤 Syncing ${this._syncedProjects.length} projets to ${this._serverUrl}...`);
+                try {
+                    await this._syncToCloud();
+                    vscode.window.showInformationMessage(`✅ ${this._syncedProjects.length} projet(s) synchronisé(s)!`);
+                } catch (err: any) {
+                    vscode.window.showErrorMessage(`❌ Sync failed: ${err?.message || err}`);
+                }
+            }, 3000);
         }
     }
 
@@ -170,21 +182,22 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
                 files: p.files
             }));
 
-            console.log(`☁️ Syncing ${projects.length} projects to ${this._serverUrl}...`);
+            console.log(`☁️ AETHER: Syncing ${projects.length} projects to ${this._serverUrl}...`);
+            console.log(`☁️ AETHER: Projects:`, projects.map(p => p.name).join(', '));
 
             const result = await httpPost(`${this._serverUrl}/api/sync/register-projects`, { projects });
 
-            console.log(`☁️ Sync result:`, result);
+            console.log(`☁️ AETHER: Sync HTTP result:`, JSON.stringify(result));
 
-            if (result.success) {
-                console.log(`✅ Successfully synced ${projects.length} projects to cloud`);
+            if (result.success && result.data?.success) {
+                console.log(`✅ AETHER: Successfully synced ${projects.length} projects to cloud`);
             } else {
-                console.error('❌ Sync failed:', result);
-                vscode.window.showErrorMessage('Erreur: ' + JSON.stringify(result));
+                console.error('❌ AETHER: Sync failed:', result);
+                vscode.window.showErrorMessage('❌ Sync error: ' + JSON.stringify(result));
             }
-        } catch (error) {
-            console.error('❌ Failed to sync to cloud:', error);
-            vscode.window.showErrorMessage('Erreur de synchronisation au cloud: ' + error);
+        } catch (error: any) {
+            console.error('❌ AETHER: Failed to sync to cloud:', error);
+            vscode.window.showErrorMessage('❌ Sync exception: ' + (error?.message || error));
         }
     }
 
