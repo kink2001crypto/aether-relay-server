@@ -40,7 +40,11 @@ export function setupWebSocket(io: SocketIOServer) {
             socket.emit('projects', projects);
         });
 
-        socket.on('setProject', (data: { name: string; path: string; folder?: string }) => {
+        socket.on('setProject', (data: { name: string; path: string; folder?: string } | null) => {
+            if (!data || !data.name) {
+                console.log('⚠️ setProject called with null/invalid data');
+                return;
+            }
             console.log(`📂 Project selected: ${data.name}`);
             socket.broadcast.emit('project:changed', data);
 
