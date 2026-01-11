@@ -90,9 +90,14 @@ export function registerProject(project: { name: string; path: string; files?: a
 }
 
 /**
- * Register multiple projects
+ * Register multiple projects - REPLACES all existing projects
  */
 export function registerProjects(projects: Array<{ name: string; path: string; files?: any[] }>) {
+    // Clear existing projects first (this ensures deletions are synced)
+    projectCache.clear();
+    clearProjects();
+
+    // Add new projects
     for (const p of projects) {
         projectCache.set(p.path, {
             path: p.path,
@@ -107,7 +112,7 @@ export function registerProjects(projects: Array<{ name: string; path: string; f
     // Broadcast to all clients
     broadcastProjects();
 
-    console.log(`📂 Registered ${projects.length} projects`);
+    console.log(`📂 Replaced with ${projects.length} projects`);
 }
 
 /**
