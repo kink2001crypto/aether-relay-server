@@ -64,13 +64,17 @@ export function setupWebSocket(io: SocketIOServer) {
         // ========== FILES ==========
 
         socket.on('getFiles', (data: { path: string; projectPath?: string }) => {
+            console.log(`📁 getFiles request: path="${data.path}" projectPath="${data.projectPath}"`);
+
             const projectPath = data.projectPath;
             if (!projectPath) {
+                console.log('❌ getFiles: No projectPath provided');
                 socket.emit('files', []);
                 return;
             }
 
             const files = getFilesAtPath(projectPath, data.path || '');
+            console.log(`✅ getFiles: Returning ${files.length} files for ${projectPath}`);
             socket.emit('files', files);
         });
 
