@@ -16,6 +16,10 @@ export function initDatabase(): void {
         // Railway Volume is configured
         dbDir = process.env.RAILWAY_VOLUME_MOUNT_PATH;
         console.log('💾 Using Railway Volume for persistence');
+    } else if (process.env.FLY_APP_NAME) {
+        // Fly.io environment (volume mounted at /data)
+        dbDir = '/data';
+        console.log('💾 Using Fly.io Volume for persistence (/data)');
     } else if (process.env.RAILWAY_ENVIRONMENT) {
         // On Railway but no volume - use /data (user should mount a volume there)
         dbDir = '/data';
