@@ -41,7 +41,7 @@ const child_process_1 = require("child_process");
 const httpClient_1 = require("./httpClient");
 class SyncHandler {
     constructor(serverUrl) {
-        this.serverUrl = 'https://aether-relay-server-production.up.railway.app';
+        this.serverUrl = 'https://aether-server.fly.dev';
         // Terminal PTY properties
         this.writeEmitter = new vscode.EventEmitter();
         if (serverUrl)

@@ -40,7 +40,7 @@ class ChatPanelProvider {
     constructor(_context) {
         this._context = _context;
         this._messages = [];
-        this._serverUrl = 'https://aether-relay-server-production.up.railway.app';
+        this._serverUrl = 'https://aether-server.fly.dev';
         this._selectedModel = 'gemini';
         this._isConnected = false;
         // Load settings
@@ -54,7 +54,7 @@ class ChatPanelProvider {
     }
     _loadSettings() {
         const config = vscode.workspace.getConfiguration('aether');
-        this._serverUrl = config.get('serverUrl', 'https://aether-relay-server-production.up.railway.app');
+        this._serverUrl = config.get('serverUrl', 'https://aether-server.fly.dev');
         this._selectedModel = config.get('selectedModel', 'gemini');
     }
     resolveWebviewView(webviewView, context, _token) {
