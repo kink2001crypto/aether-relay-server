@@ -13,9 +13,13 @@ export {
     DeleteFileAction,
     RunCommandAction,
     ReadFileAction,
+    SearchCodeAction,
     GitOperationAction,
+    ExplainAction,
+    AskQuestionAction,
     parseActionsFromResponse,
     createAction,
-    validateAction
+    validateAction,
+    generateActionId
 } from './actions.js';
 export { taskQueue, Task, TaskSummary } from './taskQueue.js';

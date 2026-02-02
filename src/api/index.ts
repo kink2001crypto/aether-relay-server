@@ -225,5 +225,37 @@ export function setupAPI(app: Express, io: SocketIOServer) {
         res.json({ success: true, stats });
     });
 
+    // ========== DIAGNOSTICS ==========
+
+    app.get('/api/diag', (req: Request, res: Response) => {
+        const sockets = Array.from(io.sockets.sockets.values());
+        const vscodeClients = getVSCodeClients();
+        const projects = getProjects();
+        const currentProject = getCurrentProject();
+        const stats = taskQueue.getStats();
+
+        res.json({
+            server: {
+                version: '2.0.0',
+                uptime: process.uptime(),
+                memory: process.memoryUsage()
+            },
+            connections: {
+                total: sockets.length,
+                vscode: vscodeClients.length
+            },
+            projects: {
+                total: projects.length,
+                current: currentProject?.name || null
+            },
+            tasks: stats,
+            ai: {
+                gemini: !!process.env.GEMINI_API_KEY,
+                openai: !!process.env.OPENAI_API_KEY,
+                claude: !!process.env.ANTHROPIC_API_KEY
+            }
+        });
+    });
+
     console.log('🔌 API routes initialized');
 }

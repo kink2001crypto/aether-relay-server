@@ -292,6 +292,36 @@ export function setupWebSocket(io: SocketIOServer) {
                         ...data.action.data.args
                     });
                     break;
+
+                case 'read_file':
+                    socket.broadcast.emit('file:read-request', {
+                        path: data.action.data.path,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    addPendingEvent('file:read-request', {
+                        path: data.action.data.path,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    break;
+
+                case 'search_code':
+                    socket.broadcast.emit('code:search', {
+                        pattern: data.action.data.pattern,
+                        fileTypes: data.action.data.fileTypes,
+                        directory: data.action.data.directory,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    addPendingEvent('code:search', {
+                        pattern: data.action.data.pattern,
+                        fileTypes: data.action.data.fileTypes,
+                        directory: data.action.data.directory,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    break;
             }
 
             socket.emit('actionDispatched', {
@@ -355,8 +385,18 @@ export function setupWebSocket(io: SocketIOServer) {
         });
 
         // Terminal response from VS Code
-        socket.on('terminal:response', (data: { output: string; exitCode?: number }) => {
+        socket.on('terminal:response', (data: { output: string; exitCode?: number; actionId?: string }) => {
             socket.broadcast.emit('terminalOutput', data);
+        });
+
+        // File read response from VS Code
+        socket.on('file:read-response', (data: { path: string; content: string; actionId?: string; error?: string }) => {
+            socket.broadcast.emit('fileReadResult', data);
+        });
+
+        // Code search response from VS Code
+        socket.on('code:search-response', (data: { pattern: string; results: any[]; actionId?: string; error?: string }) => {
+            socket.broadcast.emit('codeSearchResult', data);
         });
 
         // ========== GIT ==========
