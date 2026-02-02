@@ -28,34 +28,65 @@ app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
-// Health check
+// Health check with detailed status
 app.get('/health', (req, res) => {
+    const sockets = Array.from(io.sockets.sockets.values());
+
     res.json({
         status: 'ok',
         name: 'AETHER Server',
-        version: '1.0.0',
-        timestamp: new Date().toISOString()
+        version: '2.0.0',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        connections: sockets.length,
+        ai: {
+            gemini: !!process.env.GEMINI_API_KEY,
+            openai: !!process.env.OPENAI_API_KEY,
+            claude: !!process.env.ANTHROPIC_API_KEY
+        }
     });
 });
 
 // Initialize
 async function start() {
+    console.log('');
+    console.log('╔════════════════════════════════════════╗');
+    console.log('║         🌐 AETHER Server v2.0          ║');
+    console.log('║     Cloud Agent System for Dev Tools   ║');
+    console.log('╚════════════════════════════════════════╝');
+    console.log('');
+
     // Init database
     initDatabase();
-    console.log('💾 Database ready');
+    console.log('✅ Database ready');
 
     // Setup API routes
     setupAPI(app, io);
-    console.log('🔌 API routes ready');
+    console.log('✅ API routes ready');
 
     // Setup WebSocket
     setupWebSocket(io);
-    console.log('⚡ WebSocket ready');
+    console.log('✅ WebSocket ready');
+
+    // Check AI providers
+    const providers = [];
+    if (process.env.GEMINI_API_KEY) providers.push('Gemini');
+    if (process.env.OPENAI_API_KEY) providers.push('OpenAI');
+    if (process.env.ANTHROPIC_API_KEY) providers.push('Claude');
+
+    if (providers.length === 0) {
+        console.log('⚠️  No AI providers configured');
+    } else {
+        console.log(`✅ AI providers: ${providers.join(', ')}`);
+    }
 
     // Start server
     const PORT = process.env.PORT || 3001;
     httpServer.listen(PORT, () => {
-        console.log(`🚀 AETHER Server running on port ${PORT}`);
+        console.log('');
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`   http://localhost:${PORT}/health`);
+        console.log('');
     });
 }
 

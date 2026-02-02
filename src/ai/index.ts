@@ -2,7 +2,7 @@
  * 🤖 AI Module - Export all AI-related functionality
  */
 
-export { callAI, clearHistory, getTaskStatus, getProjectTasks, recordActionResult } from './router';
+export { callAI, clearHistory, getTaskStatus, getProjectTasks, recordActionResult } from './router.js';
 export {
     ActionType,
     AgentAction,
@@ -17,5 +17,5 @@ export {
     parseActionsFromResponse,
     createAction,
     validateAction
-} from './actions';
-export { taskQueue, Task, TaskSummary } from './taskQueue';
+} from './actions.js';
+export { taskQueue, Task, TaskSummary } from './taskQueue.js';

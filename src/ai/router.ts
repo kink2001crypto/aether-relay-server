@@ -7,8 +7,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { AgentResponse, AnyAction, parseActionsFromResponse } from './actions';
-import { taskQueue, Task } from './taskQueue';
+import { AgentResponse, AnyAction, parseActionsFromResponse } from './actions.js';
+import { taskQueue, Task } from './taskQueue.js';
 
 interface AIRequest {
     message: string;
