@@ -52,6 +52,12 @@ export function initDatabase(): void {
         );
         
         CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_path);
+
+        CREATE TABLE IF NOT EXISTS current_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     `);
 
     console.log(`💾 Database initialized at ${dbPath}`);
@@ -163,4 +169,37 @@ export function clearMessages(projectPath: string): number {
     const db = getDatabase();
     const result = db.prepare('DELETE FROM messages WHERE project_path = ?').run(projectPath);
     return result.changes;
+}
+
+// ========== CURRENT STATE ==========
+
+export interface CurrentProject {
+    name: string;
+    path: string;
+    folder?: string;
+}
+
+export function saveCurrentProject(project: CurrentProject | null): void {
+    const db = getDatabase();
+    const value = project ? JSON.stringify(project) : '';
+    db.prepare(`
+        INSERT INTO current_state (key, value, updated_at)
+        VALUES ('current_project', ?, datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = datetime('now')
+    `).run(value);
+}
+
+export function loadCurrentProject(): CurrentProject | null {
+    const db = getDatabase();
+    const row = db.prepare('SELECT value FROM current_state WHERE key = ?').get('current_project') as any;
+    if (row?.value) {
+        try {
+            return JSON.parse(row.value);
+        } catch (e) {
+            return null;
+        }
+    }
+    return null;
 }

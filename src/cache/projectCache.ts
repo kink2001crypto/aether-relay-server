@@ -3,11 +3,14 @@
  * Shared between API routes and WebSocket handlers
  */
 
-import { loadProjects, saveProjects, clearProjects, Project } from '../db/database.js';
+import { loadProjects, saveProjects, clearProjects, Project, saveCurrentProject, loadCurrentProject, CurrentProject } from '../db/database.js';
 import { Server as SocketIOServer } from 'socket.io';
 
 // Single shared cache instance
-const projectCache: Map<string, Project & { files?: any[] }> = new Map();
+const projectCache: Map<string, Project & { files?: any[]; clientId?: string }> = new Map();
+
+// Track projects by clientId for multi-IDE support
+const projectsByClient: Map<string, Set<string>> = new Map();
 
 // Connected VS Code instances (for event relay)
 interface VSCodeClient {
@@ -30,6 +33,9 @@ const EVENT_TTL = 30000; // 30 seconds
 // Socket.IO instance for broadcasting
 let io: SocketIOServer | null = null;
 
+// Current selected project (shared across all clients)
+let currentSelectedProject: CurrentProject | null = null;
+
 export function setSocketIO(socketIO: SocketIOServer) {
     io = socketIO;
 }
@@ -42,7 +48,12 @@ export function initCache() {
     for (const p of projects) {
         projectCache.set(p.path, p);
     }
+    // Load current project from DB
+    currentSelectedProject = loadCurrentProject();
     console.log(`📂 Cache initialized with ${projects.length} projects`);
+    if (currentSelectedProject) {
+        console.log(`📂 Current project restored: ${currentSelectedProject.name}`);
+    }
 }
 
 /**
@@ -90,29 +101,48 @@ export function registerProject(project: { name: string; path: string; files?: a
 }
 
 /**
- * Register multiple projects - REPLACES all existing projects
+ * Register multiple projects - MERGES by clientId (multi-IDE support)
+ * Each client (VS Code, Antigravity, etc.) manages its own projects
  */
-export function registerProjects(projects: Array<{ name: string; path: string; files?: any[] }>) {
-    // Clear existing projects first (this ensures deletions are synced)
-    projectCache.clear();
-    clearProjects();
+export function registerProjects(projects: Array<{ name: string; path: string; files?: any[] }>, clientId?: string) {
+    const effectiveClientId = clientId || 'default';
+
+    // Remove old projects from this client
+    const oldPaths = projectsByClient.get(effectiveClientId) || new Set();
+    for (const path of oldPaths) {
+        projectCache.delete(path);
+    }
+
+    // Track new projects for this client
+    const newPaths = new Set<string>();
 
     // Add new projects
     for (const p of projects) {
         projectCache.set(p.path, {
             path: p.path,
             name: p.name,
-            files: p.files
+            files: p.files,
+            clientId: effectiveClientId
         });
+        newPaths.add(p.path);
     }
 
-    // Persist to database
-    saveProjects(projects.map(p => ({ path: p.path, name: p.name, files: p.files })));
+    // Update client tracking
+    projectsByClient.set(effectiveClientId, newPaths);
+
+    // Persist ALL projects to database
+    const allProjects = Array.from(projectCache.values()).map(p => ({
+        path: p.path,
+        name: p.name,
+        files: p.files
+    }));
+    clearProjects();
+    saveProjects(allProjects);
 
     // Broadcast to all clients
     broadcastProjects();
 
-    console.log(`📂 Replaced with ${projects.length} projects`);
+    console.log(`📂 Client "${effectiveClientId}" registered ${projects.length} projects (total: ${projectCache.size})`);
 }
 
 /**
@@ -132,6 +162,36 @@ function broadcastProjects() {
     if (io) {
         const projects = getProjects();
         io.emit('projects', projects);
+    }
+}
+
+/**
+ * Get current selected project
+ */
+export function getCurrentProject(): CurrentProject | null {
+    return currentSelectedProject;
+}
+
+/**
+ * Set current selected project and persist + broadcast
+ */
+export function setCurrentProject(project: CurrentProject | null) {
+    currentSelectedProject = project;
+    saveCurrentProject(project);
+
+    // Broadcast to all clients
+    if (io) {
+        io.emit('project:changed', project);
+        io.emit('currentProject', project);
+    }
+
+    // Add to pending events for polling clients
+    addPendingEvent('project:changed', project);
+
+    if (project) {
+        console.log(`📂 Current project set: ${project.name}`);
+    } else {
+        console.log(`📂 Current project cleared`);
     }
 }
 
