@@ -16,8 +16,21 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
 
     private _syncedProjects: SyncedProject[] = [];
     private _serverUrl: string = 'https://aether-relay-server-production.up.railway.app';
+    private _clientId: string;
 
     constructor(private context: vscode.ExtensionContext) {
+        // Generate unique clientId for this IDE instance (persisted)
+        let savedClientId = this.context.globalState.get<string>('aetherClientId');
+        if (!savedClientId) {
+            // Detect IDE type from app name
+            const appName = vscode.env.appName.toLowerCase();
+            const ideType = appName.includes('cursor') ? 'antigravity' :
+                           appName.includes('code') ? 'vscode' : 'ide';
+            savedClientId = `${ideType}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+            this.context.globalState.update('aetherClientId', savedClientId);
+        }
+        this._clientId = savedClientId;
+
         // Load saved projects from storage
         this._loadSavedProjects();
 
@@ -32,7 +45,7 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
         this._serverUrl = serverUrl as string;
 
         // DEBUG: Show that extension loaded
-        vscode.window.showInformationMessage(`🔧 AETHER v2.1 loaded - ${this._syncedProjects.length} projets locaux`);
+        vscode.window.showInformationMessage(`🔧 AETHER v2.2 loaded - ${this._syncedProjects.length} projets locaux`);
 
         // AUTO-SYNC: Push saved projects to server on startup (delayed to ensure URL is set)
         if (this._syncedProjects.length > 0) {
@@ -182,15 +195,19 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
                 files: p.files
             }));
 
-            console.log(`☁️ AETHER: Syncing ${projects.length} projects to ${this._serverUrl}...`);
+            console.log(`☁️ AETHER [${this._clientId}]: Syncing ${projects.length} projects to ${this._serverUrl}...`);
             console.log(`☁️ AETHER: Projects:`, projects.map(p => p.name).join(', '));
 
-            const result = await httpPost(`${this._serverUrl}/api/sync/register-projects`, { projects });
+            // Include clientId to merge instead of replace
+            const result = await httpPost(`${this._serverUrl}/api/sync/register-projects`, {
+                projects,
+                clientId: this._clientId
+            });
 
             console.log(`☁️ AETHER: Sync HTTP result:`, JSON.stringify(result));
 
             if (result.success && result.data?.success) {
-                console.log(`✅ AETHER: Successfully synced ${projects.length} projects to cloud`);
+                console.log(`✅ AETHER [${this._clientId}]: Successfully synced ${projects.length} projects to cloud`);
             } else {
                 console.error('❌ AETHER: Sync failed:', result);
                 vscode.window.showErrorMessage('❌ Sync error: ' + JSON.stringify(result));

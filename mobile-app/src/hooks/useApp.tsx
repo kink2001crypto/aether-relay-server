@@ -30,6 +30,19 @@ interface Project {
   folder: string;
 }
 
+export interface GitStatus {
+  isRepo: boolean;
+  branch?: string;
+  status?: Array<{ status: string; file: string }>;
+  success?: boolean;
+  error?: string;
+  ahead?: number;
+  behind?: number;
+  modified?: number;
+  staged?: number;
+  untracked?: number;
+}
+
 interface ApiKeys {
   gemini?: string;
   openai?: string;
@@ -101,7 +114,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [fileContent, setFileContent] = useState<string>('');
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
-  const [gitStatus, setGitStatus] = useState<any>({ isRepo: false });
+  const [gitStatus, setGitStatus] = useState<GitStatus>({ isRepo: false });
   const [lintErrors, setLintErrors] = useState<any[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -176,6 +189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.log('✅ Connected to server');
       newSocket.emit('register', { type: 'mobile' });
       newSocket.emit('getProjects');
+      newSocket.emit('getCurrentProject'); // Get current project from server
     });
 
     newSocket.on('disconnect', (reason) => {
@@ -227,6 +241,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newSocket.on('projects', (data: Project[]) => {
       console.log('📂 Projects:', data.length);
       setProjects(data);
+    });
+
+    // Current project from server (sync across all clients)
+    newSocket.on('currentProject', (data: Project | null) => {
+      if (data) {
+        console.log('📂 Current project from server:', data.name);
+        setCurrentProjectState(data);
+        // Also save locally
+        AsyncStorage.setItem('currentProject', JSON.stringify(data));
+      }
+    });
+
+    // Project changed by another client
+    newSocket.on('project:changed', (data: Project | null) => {
+      if (data) {
+        console.log('📂 Project changed by another client:', data.name);
+        setCurrentProjectState(data);
+        AsyncStorage.setItem('currentProject', JSON.stringify(data));
+      }
     });
 
     // Files
