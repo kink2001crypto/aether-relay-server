@@ -231,63 +231,236 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
         }
     }
 
+    // Hardcoded exclusions for directories (never scan these)
+    private static readonly EXCLUDED_DIRS = new Set([
+        'node_modules', '.git', 'dist', 'build', '.next', '.expo', '.nuxt',
+        'coverage', '__pycache__', '.cache', '.parcel-cache', '.turbo',
+        'out', '.output', '.vercel', '.netlify', '.serverless',
+        'vendor', 'venv', '.venv', 'env', '.env', 'virtualenv',
+        '.idea', '.vscode', '.vs', '.gradle', '.mvn',
+        'target', 'bin', 'obj', 'Debug', 'Release',
+        '.terraform', '.pulumi', 'cdk.out',
+        'Pods', '.cocoapods', 'android/build', 'ios/build',
+        '.npm', '.yarn', '.pnpm-store', '.bun',
+        'tmp', 'temp', 'logs', '.log'
+    ]);
+
+    // Hardcoded exclusions for files (never sync these)
+    private static readonly EXCLUDED_FILE_PATTERNS = [
+        /\.lock$/i,           // package-lock.json, yarn.lock, pnpm-lock.yaml, etc.
+        /\.log$/i,            // Any log files
+        /\.min\.(js|css)$/i,  // Minified files
+        /\.map$/i,            // Source maps
+        /\.d\.ts$/i,          // TypeScript declarations (usually generated)
+        /\.pyc$/i,            // Python compiled
+        /\.pyo$/i,            // Python optimized
+        /\.class$/i,          // Java compiled
+        /\.jar$/i,            // Java archives
+        /\.war$/i,            // Web archives
+        /\.dll$/i,            // Dynamic libraries
+        /\.so$/i,             // Shared objects
+        /\.dylib$/i,          // Mac dynamic libraries
+        /\.exe$/i,            // Executables
+        /\.bin$/i,            // Binary files
+        /\.o$/i,              // Object files
+        /\.a$/i,              // Static libraries
+        /\.wasm$/i,           // WebAssembly
+        /\.sqlite$/i,         // SQLite databases
+        /\.db$/i,             // Databases
+        /\.png$/i,            // Images
+        /\.jpg$/i,
+        /\.jpeg$/i,
+        /\.gif$/i,
+        /\.ico$/i,
+        /\.svg$/i,            // Keep SVG small ones only (handled by size limit)
+        /\.webp$/i,
+        /\.mp3$/i,            // Audio
+        /\.wav$/i,
+        /\.ogg$/i,
+        /\.mp4$/i,            // Video
+        /\.webm$/i,
+        /\.mov$/i,
+        /\.avi$/i,
+        /\.pdf$/i,            // Documents
+        /\.zip$/i,            // Archives
+        /\.tar$/i,
+        /\.gz$/i,
+        /\.rar$/i,
+        /\.7z$/i,
+        /\.ttf$/i,            // Fonts
+        /\.woff$/i,
+        /\.woff2$/i,
+        /\.eot$/i,
+        /\.otf$/i,
+        /DS_Store$/i,         // Mac system files
+        /Thumbs\.db$/i,       // Windows system files
+    ];
+
+    // Gitignore patterns cache per project
+    private _gitignoreCache: Map<string, string[]> = new Map();
+
+    private _loadGitignore(projectPath: string): string[] {
+        if (this._gitignoreCache.has(projectPath)) {
+            return this._gitignoreCache.get(projectPath)!;
+        }
+
+        const patterns: string[] = [];
+        const gitignorePath = path.join(projectPath, '.gitignore');
+
+        try {
+            if (fs.existsSync(gitignorePath)) {
+                const content = fs.readFileSync(gitignorePath, 'utf-8');
+                const lines = content.split('\n');
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    // Skip comments and empty lines
+                    if (trimmed && !trimmed.startsWith('#')) {
+                        // Remove trailing slashes for directory patterns
+                        patterns.push(trimmed.replace(/\/$/, ''));
+                    }
+                }
+            }
+        } catch (e) {
+            // Ignore errors reading .gitignore
+        }
+
+        this._gitignoreCache.set(projectPath, patterns);
+        return patterns;
+    }
+
+    private _isGitignored(itemName: string, relativePath: string, gitignorePatterns: string[]): boolean {
+        const fullRelPath = relativePath ? `${relativePath}/${itemName}` : itemName;
+
+        for (const pattern of gitignorePatterns) {
+            // Simple pattern matching (covers most common cases)
+            // Exact match
+            if (pattern === itemName || pattern === fullRelPath) {
+                return true;
+            }
+            // Wildcard patterns like *.log
+            if (pattern.startsWith('*')) {
+                const ext = pattern.slice(1);
+                if (itemName.endsWith(ext)) {
+                    return true;
+                }
+            }
+            // Directory patterns like logs/ matched as logs
+            if (itemName === pattern) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private _isExcludedFile(fileName: string): boolean {
+        for (const pattern of MobileProjectsProvider.EXCLUDED_FILE_PATTERNS) {
+            if (pattern.test(fileName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private _getProjectFiles(projectPath: string, relativePath: string = '', depth: number = 0): any[] {
-        // Limit depth to prevent too deep scanning
-        if (depth > 10) return [];
+        // Limit depth to prevent too deep scanning (reduced from 10)
+        if (depth > 5) return [];
 
         // Code file extensions to cache content for
-        const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.py', '.css', '.scss', '.html', '.vue', '.svelte', '.yaml', '.yml', '.toml', '.xml', '.sh', '.txt'];
-        const MAX_FILE_SIZE = 500 * 1024; // 500KB max per file
+        const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.py', '.css', '.scss', '.html', '.vue', '.svelte', '.yaml', '.yml', '.toml', '.xml', '.sh', '.txt', '.env.example', '.env.sample'];
+        const MAX_FILE_SIZE = 100 * 1024; // 100KB max per file (reduced from 500KB)
+        const MAX_TOTAL_FILES = 500; // Max files per project
+
+        // Load gitignore patterns for this project
+        const gitignorePatterns = this._loadGitignore(projectPath);
 
         try {
             const targetPath = relativePath ? path.join(projectPath, relativePath) : projectPath;
             const items = fs.readdirSync(targetPath, { withFileTypes: true });
 
             const result: any[] = [];
+            let fileCount = 0;
+
             const filtered = items
-                .filter(item => !item.name.startsWith('.') &&
-                    item.name !== 'node_modules' &&
-                    item.name !== '__pycache__' &&
-                    item.name !== 'dist' &&
-                    item.name !== 'build' &&
-                    item.name !== '.git')
-                .slice(0, 100); // Limit items per folder
+                .filter(item => {
+                    // Skip hidden files (except important ones)
+                    if (item.name.startsWith('.')) {
+                        // Allow these specific hidden files
+                        const allowedHidden = ['.env.example', '.env.sample', '.eslintrc', '.prettierrc', '.babelrc', '.editorconfig'];
+                        if (!allowedHidden.some(h => item.name.startsWith(h))) {
+                            return false;
+                        }
+                    }
+
+                    // Check hardcoded directory exclusions
+                    if (item.isDirectory() && MobileProjectsProvider.EXCLUDED_DIRS.has(item.name)) {
+                        return false;
+                    }
+
+                    // Check hardcoded file exclusions
+                    if (item.isFile() && this._isExcludedFile(item.name)) {
+                        return false;
+                    }
+
+                    // Check gitignore patterns
+                    if (this._isGitignored(item.name, relativePath, gitignorePatterns)) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                .slice(0, 50); // Reduced limit per folder (from 100)
 
             for (const item of filtered) {
+                if (fileCount >= MAX_TOTAL_FILES) break;
+
                 const itemPath = relativePath ? path.join(relativePath, item.name) : item.name;
                 const fullPath = path.join(projectPath, itemPath);
 
                 if (item.isDirectory()) {
                     // Recursively get children
                     const children = this._getProjectFiles(projectPath, itemPath, depth + 1);
-                    result.push({
-                        name: item.name,
-                        path: itemPath,
-                        type: 'directory',
-                        children: children
-                    });
-                } else {
-                    // Check if it's a code file we should cache content for
-                    const ext = path.extname(item.name).toLowerCase();
-                    let content: string | undefined;
-
-                    if (codeExtensions.includes(ext)) {
-                        try {
-                            const stats = fs.statSync(fullPath);
-                            if (stats.size <= MAX_FILE_SIZE) {
-                                content = fs.readFileSync(fullPath, 'utf-8');
-                            }
-                        } catch (e) {
-                            // Ignore read errors
-                        }
+                    // Only include directories that have content
+                    if (children.length > 0) {
+                        result.push({
+                            name: item.name,
+                            path: itemPath,
+                            type: 'directory',
+                            children: children
+                        });
+                        fileCount += children.length;
                     }
+                } else {
+                    // Check file size first
+                    try {
+                        const stats = fs.statSync(fullPath);
+                        if (stats.size > MAX_FILE_SIZE) {
+                            continue; // Skip large files entirely
+                        }
 
-                    result.push({
-                        name: item.name,
-                        path: itemPath,
-                        type: 'file',
-                        content: content // Will be undefined for binary/large files
-                    });
+                        // Check if it's a code file we should cache content for
+                        const ext = path.extname(item.name).toLowerCase();
+                        let content: string | undefined;
+
+                        if (codeExtensions.includes(ext)) {
+                            try {
+                                content = fs.readFileSync(fullPath, 'utf-8');
+                            } catch (e) {
+                                // Ignore read errors
+                            }
+                        }
+
+                        result.push({
+                            name: item.name,
+                            path: itemPath,
+                            type: 'file',
+                            content: content // Will be undefined for binary/large files
+                        });
+                        fileCount++;
+                    } catch (e) {
+                        // Skip files we can't stat
+                        continue;
+                    }
                 }
             }
 
