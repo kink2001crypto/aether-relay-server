@@ -1,11 +1,12 @@
 # Ignore everything except extension essentials
 **/*
 
-# Include only what's needed
+# Include only what's needed for the extension
 !out/**
 !resources/**
 !package.json
-!extension-package.json
+!LICENSE
+!CHANGELOG.md
 
 # Explicitly exclude heavy folders
 node_modules/**
@@ -15,14 +16,25 @@ dist/**
 extension-src/**
 data/**
 .agent/**
+.agentvibes/**
 .claude/**
 _bmad/**
+_bmad-output/**
+docs/**
 *.ts
 *.map
 .git/**
 .gitignore
 *.md
+!CHANGELOG.md
 *.lock
+package-lock.json
 tsconfig.json
 extension-tsconfig.json
-package-*.json
+extension-package.json
+package-extension.json
+Dockerfile
+fly.toml
+.dockerignore
+.mcp.json
+*.vsix

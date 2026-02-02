@@ -1,17 +1,24 @@
 {
 	"name": "aether-mobile",
 	"displayName": "AETHER AI Assistant",
-	"description": "AI-powered coding assistant - Chat, edit files, run commands from VS Code and mobile",
-	"version": "2.2.0",
+	"description": "AI-powered coding assistant - Chat, edit files, run commands from VS Code and mobile. Compatible with VS Code, Cursor, VSCodium, Code-OSS, Windsurf, and other forks.",
+	"version": "2.3.0",
 	"publisher": "aether",
+	"license": "MIT",
 	"engines": {
-		"vscode": "^1.85.0"
+		"vscode": "^1.70.0"
 	},
 	"categories": [
 		"Machine Learning",
 		"Programming Languages",
 		"Other"
 	],
+	"extensionKind": ["workspace", "ui"],
+	"capabilities": {
+		"untrustedWorkspaces": {
+			"supported": true
+		}
+	},
 	"activationEvents": [
 		"onStartupFinished"
 	],
@@ -178,17 +185,22 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./",
-		"watch": "tsc -watch -p ./",
-		"package": "vsce package",
+		"compile": "tsc -p ./extension-tsconfig.json",
+		"watch": "tsc -watch -p ./extension-tsconfig.json",
+		"package": "vsce package --out aether-mobile.vsix",
+		"package:pre": "vsce package --pre-release --out aether-mobile-pre.vsix",
+		"publish:vsce": "vsce publish",
+		"publish:ovsx": "ovsx publish aether-mobile.vsix",
+		"publish:all": "npm run publish:vsce && npm run publish:ovsx",
 		"start:all": "./start-all.sh",
 		"start:all:ngrok": "./start-all.sh --ngrok"
 	},
 	"devDependencies": {
 		"@types/node": "^20.10.0",
-		"@types/vscode": "^1.85.0",
+		"@types/vscode": "^1.70.0",
 		"typescript": "^5.3.0",
-		"@vscode/vsce": "^2.22.0"
+		"@vscode/vsce": "^2.22.0",
+		"ovsx": "^0.8.0"
 	},
 	"keywords": [
 		"ai",
@@ -196,6 +208,18 @@
 		"chat",
 		"mobile",
 		"sync",
-		"coding assistant"
-	]
+		"coding assistant",
+		"cursor",
+		"vscodium",
+		"windsurf",
+		"antigravity"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/aether/aether-server"
+	},
+	"bugs": {
+		"url": "https://github.com/aether/aether-server/issues"
+	},
+	"homepage": "https://github.com/aether/aether-server#readme"
 }

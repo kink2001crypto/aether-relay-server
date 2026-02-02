@@ -71,7 +71,7 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
     }
 
     refresh(): void {
-        this._onDidChangeTreeData.fire();
+        this._onDidChangeTreeData.fire(undefined);
     }
 
     setServerUrl(url: string) {
