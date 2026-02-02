@@ -1,21 +1,18 @@
+/**
+ * ⚙️ AETHER Mobile - Settings Screen
+ * Configuration for AI models, API keys, and preferences
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../hooks/useApp';
 import { useTheme } from '../theme';
+import { APP_VERSION, BUILD_DATE, SERVER_URL } from '../config';
 
-const { width } = Dimensions.get('window');
-
-interface ProviderInfo {
-  id: string;
-  name: string;
-  description: string;
-  free: boolean;
-  available: boolean;
-  configured: boolean;
-}
+// ============== MODEL CONFIG ==============
 
 const MODEL_ICONS: Record<string, string> = {
   gemini: 'sparkles',
@@ -39,64 +36,63 @@ const MODEL_COLORS: Record<string, [string, string]> = {
 
 const MODEL_VARIANTS: Record<string, { id: string; name: string }[]> = {
   gemini: [
-    // Real Gemini API model IDs
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Fast)' },
     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Best)' },
     { id: 'gemini-1.0-pro', name: 'Gemini 1.0 Pro' },
   ],
   claude: [
-    // Real Claude API model IDs
-    { id: 'claude-sonnet-4-20250514', name: '🆕 Claude 4 Sonnet (Latest)' },
+    { id: 'claude-sonnet-4-20250514', name: 'Claude 4 Sonnet (Latest)' },
     { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (Best)' },
     { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (Fast)' },
     { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (Powerful)' },
-    { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku' },
   ],
   openai: [
-    // Real OpenAI API model IDs
     { id: 'gpt-4o', name: 'GPT-4o (Latest)' },
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast)' },
     { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
     { id: 'o1', name: 'o1 (Reasoning)' },
     { id: 'o1-mini', name: 'o1 Mini (Fast Reasoning)' },
-    { id: 'gpt-4', name: 'GPT-4' },
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
   ],
   deepseek: [
-    // Real DeepSeek API model IDs  
     { id: 'deepseek-chat', name: 'DeepSeek Chat (Latest)' },
     { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoning)' },
     { id: 'deepseek-coder', name: 'DeepSeek Coder' },
   ],
   grok: [
-    // Real Grok API model IDs
     { id: 'grok-2-latest', name: 'Grok 2 (Latest)' },
     { id: 'grok-2-vision-1212', name: 'Grok 2 Vision' },
     { id: 'grok-beta', name: 'Grok Beta' },
   ],
   glm: [
-    // Real Zhipu GLM API model IDs
     { id: 'glm-4-plus', name: 'GLM-4 Plus (Best)' },
     { id: 'glm-4-air', name: 'GLM-4 Air (Fast)' },
-    { id: 'glm-4-airx', name: 'GLM-4 AirX (Faster)' },
     { id: 'glm-4-flash', name: 'GLM-4 Flash (Fastest)' },
     { id: 'glm-4-long', name: 'GLM-4 Long (1M context)' },
-    { id: 'glm-4', name: 'GLM-4' },
   ],
   ollama: [
-    // Local Ollama models - installed on your machine
-    { id: 'qwen2.5:14b', name: '🔥 Qwen 2.5 14B (Best quality)' },
-    { id: 'deepseek-coder-v2:16b', name: '🔥 DeepSeek Coder V2 16B' },
+    { id: 'qwen2.5:14b', name: 'Qwen 2.5 14B (Best quality)' },
+    { id: 'deepseek-coder-v2:16b', name: 'DeepSeek Coder V2 16B' },
     { id: 'qwen2.5-coder:7b', name: 'Qwen 2.5 Coder 7B' },
     { id: 'llama3.1:8b', name: 'Llama 3.1 8B' },
     { id: 'llama3.2:latest', name: 'Llama 3.2 (Fast)' },
   ],
 };
 
+interface ProviderInfo {
+  id: string;
+  name: string;
+  description: string;
+  free: boolean;
+  available: boolean;
+  configured: boolean;
+}
+
+// ============== COMPONENT ==============
+
 export default function SettingsScreen() {
-  // 🌐 Cloud-only: Plus besoin de serverUrl modifiable
   const { serverUrl, selectedModel, setSelectedModel, isConnected, apiKeys, setApiKey, modelVariants, setModelVariant } = useApp();
   const { isDarkMode, toggleTheme, colors } = useTheme();
+
   const [notifications, setNotifications] = useState(true);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [tempApiKey, setTempApiKey] = useState('');
@@ -104,7 +100,7 @@ export default function SettingsScreen() {
   const [loadingProviders, setLoadingProviders] = useState(false);
   const [expandedModel, setExpandedModel] = useState<string | null>(null);
 
-
+  const styles = createStyles(colors);
 
   // Fetch providers status from server
   const fetchProviders = useCallback(async () => {
@@ -130,19 +126,17 @@ export default function SettingsScreen() {
     }
   }, [isConnected, fetchProviders]);
 
-
-
-  const handleSelectModel = (modelId: string) => {
+  const handleSelectModel = useCallback((modelId: string) => {
     const provider = providers.find(p => p.id === modelId);
     const hasLocalKey = !!(apiKeys as any)[modelId];
     const hasServerKey = provider?.configured || false;
 
     if (modelId === 'ollama' || hasLocalKey || hasServerKey) {
       setSelectedModel(modelId);
-      Alert.alert('✓ Model Changed', `Using ${modelId.charAt(0).toUpperCase() + modelId.slice(1)}`);
+      Alert.alert('Model Changed', `Using ${modelId.charAt(0).toUpperCase() + modelId.slice(1)}`);
     } else {
       Alert.alert(
-        '⚠️ API Key Required',
+        'API Key Required',
         `Add your ${modelId} API key to use this model`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -150,9 +144,9 @@ export default function SettingsScreen() {
         ]
       );
     }
-  };
+  }, [providers, apiKeys, setSelectedModel]);
 
-  const getModelStatus = (modelId: string): { text: string; color: string; icon: string } => {
+  const getModelStatus = useCallback((modelId: string): { text: string; color: string; icon: string } => {
     const provider = providers.find(p => p.id === modelId);
     const hasLocalKey = !!(apiKeys as any)[modelId];
 
@@ -160,15 +154,42 @@ export default function SettingsScreen() {
       return { text: 'Local (Free)', color: colors.success, icon: 'checkmark-circle' };
     }
     if (hasLocalKey) {
-      return { text: 'Your Key ✓', color: colors.success, icon: 'key' };
+      return { text: 'Your Key', color: colors.success, icon: 'key' };
     }
     if (provider?.configured) {
-      return { text: 'Server Key ✓', color: colors.primary, icon: 'cloud' };
+      return { text: 'Server Key', color: colors.primary, icon: 'cloud' };
     }
     return { text: 'Not Configured', color: colors.textMuted, icon: 'add-circle' };
-  };
+  }, [providers, apiKeys, colors]);
 
-  const styles = createStyles(colors);
+  const handleSaveApiKey = useCallback((modelId: string) => {
+    if (tempApiKey.trim()) {
+      setApiKey(modelId, tempApiKey.trim());
+      Alert.alert('API Key Saved', `Your ${modelId} key is now configured`);
+    }
+    setEditingKey(null);
+    setTempApiKey('');
+  }, [tempApiKey, setApiKey]);
+
+  const handleRemoveApiKey = useCallback((modelId: string) => {
+    Alert.alert(
+      'Remove API Key?',
+      `Remove your ${modelId} API key?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            setApiKey(modelId, '');
+            Alert.alert('Removed', `Your ${modelId} key has been removed`);
+          }
+        }
+      ]
+    );
+  }, [setApiKey]);
+
+  // ============== RENDER ==============
 
   return (
     <LinearGradient colors={[colors.background, isDarkMode ? '#0f0f18' : '#f1f5f9']} style={styles.container}>
@@ -179,20 +200,20 @@ export default function SettingsScreen() {
             <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.headerIcon}>
               <Ionicons name="settings" size={28} color="#fff" />
             </LinearGradient>
-            <Text style={styles.headerTitle}>Settings</Text>
-            <Text style={styles.headerSubtitle}>Configure your AETHER experience</Text>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.textMuted }]}>Configure your AETHER experience</Text>
           </View>
 
           {/* Connection Status */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>CONNECTION</Text>
-            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>CONNECTION</Text>
+            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={[styles.card, { borderColor: colors.border }]}>
               <View style={styles.statusRow}>
                 <View style={styles.statusInfo}>
                   <View style={[styles.statusDot, isConnected ? styles.dotConnected : styles.dotDisconnected]} />
                   <View>
-                    <Text style={styles.statusLabel}>{isConnected ? 'Connected' : 'Disconnected'}</Text>
-                    <Text style={styles.statusUrl} numberOfLines={1}>{serverUrl}</Text>
+                    <Text style={[styles.statusLabel, { color: colors.text }]}>{isConnected ? 'Connected' : 'Disconnected'}</Text>
+                    <Text style={[styles.statusUrl, { color: colors.textMuted }]} numberOfLines={1}>{SERVER_URL}</Text>
                   </View>
                 </View>
                 <View style={[styles.statusBadge, isConnected ? styles.badgeSuccess : styles.badgeError]}>
@@ -202,12 +223,10 @@ export default function SettingsScreen() {
             </LinearGradient>
           </View>
 
-
-
-          {/* AI Models - Unified Menu */}
+          {/* AI Models */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>AI MODELS</Text>
+              <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>AI MODELS</Text>
               <TouchableOpacity onPress={fetchProviders}>
                 {loadingProviders ? (
                   <ActivityIndicator size="small" color={colors.primary} />
@@ -216,8 +235,8 @@ export default function SettingsScreen() {
                 )}
               </TouchableOpacity>
             </View>
-            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={styles.card}>
-              {['ollama', 'gemini', 'claude', 'openai', 'deepseek', 'grok', 'glm'].map((modelId, index) => {
+            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={[styles.card, { borderColor: colors.border }]}>
+              {['ollama', 'gemini', 'claude', 'openai', 'deepseek', 'grok', 'glm'].map((modelId, index, arr) => {
                 const isSelected = selectedModel === modelId;
                 const status = getModelStatus(modelId);
                 const isEditing = editingKey === modelId;
@@ -225,11 +244,8 @@ export default function SettingsScreen() {
 
                 return (
                   <View key={modelId}>
-                    <View style={[styles.modelRow, index < 5 && styles.modelRowBorder]}>
-                      <TouchableOpacity
-                        style={styles.modelMain}
-                        onPress={() => handleSelectModel(modelId)}
-                      >
+                    <View style={[styles.modelRow, index < arr.length - 1 && styles.modelRowBorder]}>
+                      <TouchableOpacity style={styles.modelMain} onPress={() => handleSelectModel(modelId)}>
                         <LinearGradient
                           colors={isSelected ? modelColors : [colors.surfaceLight, colors.surface]}
                           style={styles.modelIcon}
@@ -242,7 +258,7 @@ export default function SettingsScreen() {
                         </LinearGradient>
                         <View style={styles.modelInfo}>
                           <View style={styles.modelNameRow}>
-                            <Text style={[styles.modelName, isSelected && { color: modelColors[0] }]}>
+                            <Text style={[styles.modelName, { color: colors.text }, isSelected && { color: modelColors[0] }]}>
                               {modelId.charAt(0).toUpperCase() + modelId.slice(1)}
                             </Text>
                             {isSelected && (
@@ -262,23 +278,7 @@ export default function SettingsScreen() {
                         <View style={{ flexDirection: 'row', gap: 6 }}>
                           {!!(apiKeys as any)[modelId] && (
                             <TouchableOpacity
-                              onPress={() => {
-                                Alert.alert(
-                                  '🗑️ Remove API Key?',
-                                  `Remove your ${modelId} API key?`,
-                                  [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    {
-                                      text: 'Remove',
-                                      style: 'destructive',
-                                      onPress: () => {
-                                        setApiKey(modelId, '');
-                                        Alert.alert('✓ Removed', `Your ${modelId} key has been removed`);
-                                      }
-                                    }
-                                  ]
-                                );
-                              }}
+                              onPress={() => handleRemoveApiKey(modelId)}
                               style={[styles.keyBtn, { backgroundColor: colors.error + '20' }]}
                             >
                               <Ionicons name="trash" size={18} color={colors.error} />
@@ -310,7 +310,7 @@ export default function SettingsScreen() {
                     {isEditing && (
                       <View style={styles.keyInputContainer}>
                         <TextInput
-                          style={[styles.keyInput, { backgroundColor: colors.background, borderColor: colors.border }]}
+                          style={[styles.keyInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
                           value={tempApiKey}
                           onChangeText={setTempApiKey}
                           placeholder={`Enter your ${modelId} API key`}
@@ -327,16 +327,7 @@ export default function SettingsScreen() {
                           >
                             <Text style={[styles.keyActionText, { color: colors.error }]}>Cancel</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (tempApiKey.trim()) {
-                                setApiKey(modelId, tempApiKey.trim());
-                                Alert.alert('✓ API Key Saved', `Your ${modelId} key is now configured`);
-                              }
-                              setEditingKey(null);
-                              setTempApiKey('');
-                            }}
-                          >
+                          <TouchableOpacity onPress={() => handleSaveApiKey(modelId)}>
                             <LinearGradient colors={[colors.success, '#059669']} style={styles.keySaveBtn}>
                               <Ionicons name="checkmark" size={18} color="#fff" />
                               <Text style={styles.keySaveText}>Save Key</Text>
@@ -401,12 +392,12 @@ export default function SettingsScreen() {
 
           {/* Preferences */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>PREFERENCES</Text>
-            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>PREFERENCES</Text>
+            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={[styles.card, { borderColor: colors.border }]}>
               <View style={[styles.preferenceRow, styles.preferenceRowBorder]}>
                 <View style={styles.preferenceInfo}>
                   <Ionicons name={isDarkMode ? 'moon' : 'sunny'} size={22} color={colors.primary} />
-                  <Text style={styles.preferenceName}>{isDarkMode ? 'Dark Mode' : 'Light Mode'}</Text>
+                  <Text style={[styles.preferenceName, { color: colors.text }]}>{isDarkMode ? 'Dark Mode' : 'Light Mode'}</Text>
                 </View>
                 <Switch
                   value={isDarkMode}
@@ -418,7 +409,7 @@ export default function SettingsScreen() {
               <View style={styles.preferenceRow}>
                 <View style={styles.preferenceInfo}>
                   <Ionicons name="notifications" size={22} color={colors.warning} />
-                  <Text style={styles.preferenceName}>Notifications</Text>
+                  <Text style={[styles.preferenceName, { color: colors.text }]}>Notifications</Text>
                 </View>
                 <Switch
                   value={notifications}
@@ -432,30 +423,27 @@ export default function SettingsScreen() {
 
           {/* About */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>ABOUT</Text>
-            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={styles.card}>
+            <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>ABOUT</Text>
+            <LinearGradient colors={[colors.surfaceLight, colors.surface]} style={[styles.card, { borderColor: colors.border }]}>
               <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>Version</Text>
-                <Text style={styles.aboutValue}>1.0.0</Text>
+                <Text style={[styles.aboutLabel, { color: colors.textMuted }]}>Version</Text>
+                <Text style={[styles.aboutValue, { color: colors.text }]}>{APP_VERSION}</Text>
               </View>
               <View style={[styles.aboutRow, styles.aboutRowBorder]}>
-                <Text style={styles.aboutLabel}>Build</Text>
-                <Text style={styles.aboutValue}>2026.01.01</Text>
+                <Text style={[styles.aboutLabel, { color: colors.textMuted }]}>Build</Text>
+                <Text style={[styles.aboutValue, { color: colors.text }]}>{BUILD_DATE}</Text>
               </View>
               <View style={styles.aboutRow}>
-                <Text style={styles.aboutLabel}>Made with</Text>
-                <View style={styles.madeWith}>
-                  <Text style={styles.aboutValue}>❤️</Text>
-                  <Text style={styles.aboutValue}>React Native</Text>
-                </View>
+                <Text style={[styles.aboutLabel, { color: colors.textMuted }]}>Server</Text>
+                <Text style={[styles.aboutValue, { color: colors.primary }]} numberOfLines={1}>Fly.io</Text>
               </View>
             </LinearGradient>
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>AETHER IDE</Text>
-            <Text style={styles.footerSubtext}>Mobile Coding Companion</Text>
+            <Text style={[styles.footerText, { color: colors.textMuted }]}>AETHER IDE</Text>
+            <Text style={[styles.footerSubtext, { color: colors.textMuted }]}>Mobile Coding Companion</Text>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -463,34 +451,29 @@ export default function SettingsScreen() {
   );
 }
 
+// ============== STYLES ==============
+
 const createStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1 },
   scrollView: { flex: 1 },
   header: { alignItems: 'center', paddingVertical: 32 },
   headerIcon: { width: 64, height: 64, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  headerTitle: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: 1 },
-  headerSubtitle: { color: colors.textMuted, fontSize: 14, marginTop: 6 },
+  headerTitle: { fontSize: 28, fontWeight: '800', letterSpacing: 1 },
+  headerSubtitle: { fontSize: 14, marginTop: 6 },
   section: { paddingHorizontal: 16, marginBottom: 24 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { color: colors.textMuted, fontSize: 12, fontWeight: '700', letterSpacing: 1.5, marginLeft: 4 },
-  card: { borderRadius: 20, padding: 16, borderWidth: 1, borderColor: colors.border },
+  sectionTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 1.5, marginLeft: 4, marginBottom: 12 },
+  card: { borderRadius: 20, padding: 16, borderWidth: 1 },
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statusInfo: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
   statusDot: { width: 14, height: 14, borderRadius: 7 },
   dotConnected: { backgroundColor: colors.success },
   dotDisconnected: { backgroundColor: colors.error },
-  statusLabel: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  statusUrl: { color: colors.textMuted, fontSize: 12, marginTop: 3, maxWidth: 180 },
+  statusLabel: { fontSize: 16, fontWeight: '600' },
+  statusUrl: { fontSize: 12, marginTop: 3, maxWidth: 180 },
   statusBadge: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   badgeSuccess: { backgroundColor: colors.success + '20' },
   badgeError: { backgroundColor: colors.error + '20' },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.background, borderRadius: 14, paddingHorizontal: 16, borderWidth: 1, borderColor: colors.border },
-  input: { flex: 1, color: colors.text, fontSize: 15, paddingVertical: 14 },
-  buttonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 16 },
-  buttonSecondary: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: colors.primary + '20', borderWidth: 1, borderColor: colors.primary + '40' },
-  buttonSecondaryText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
-  buttonPrimary: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
-  buttonPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   // Model styles
   modelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
   modelRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -498,33 +481,20 @@ const createStyles = (colors: any) => StyleSheet.create({
   modelIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   modelInfo: { flex: 1 },
   modelNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  modelName: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  modelName: { fontSize: 16, fontWeight: '600' },
   activeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   activeBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   modelStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   modelStatus: { fontSize: 12 },
   keyBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   keyInputContainer: { paddingVertical: 12, paddingLeft: 62 },
-  keyInput: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, borderWidth: 1, color: colors.text },
+  keyInput: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, borderWidth: 1 },
   keyButtonRow: { flexDirection: 'row', gap: 10, marginTop: 12, justifyContent: 'flex-end' },
   keyActionBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   keyActionText: { fontSize: 14, fontWeight: '600' },
   keySaveBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   keySaveText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  // Other styles
-  preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
-  preferenceRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  preferenceName: { color: colors.text, fontSize: 16, fontWeight: '500' },
-  aboutRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
-  aboutRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  aboutLabel: { color: colors.textMuted, fontSize: 14 },
-  aboutValue: { color: colors.text, fontSize: 14, fontWeight: '500' },
-  madeWith: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  footer: { alignItems: 'center', paddingVertical: 32 },
-  footerText: { color: colors.textMuted, fontSize: 16, fontWeight: '700', letterSpacing: 2 },
-  footerSubtext: { color: colors.textMuted, fontSize: 12, marginTop: 4, opacity: 0.6 },
-  // Variant selector styles
+  // Variant selector
   variantContainer: { marginTop: 12, paddingLeft: 62 },
   variantSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
   variantInfo: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
@@ -533,4 +503,18 @@ const createStyles = (colors: any) => StyleSheet.create({
   variantList: { marginTop: 8, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   variantOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 },
   variantOptionText: { fontSize: 14, fontWeight: '500' },
+  // Preferences
+  preferenceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  preferenceRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  preferenceInfo: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  preferenceName: { fontSize: 16, fontWeight: '500' },
+  // About
+  aboutRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  aboutRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  aboutLabel: { fontSize: 14 },
+  aboutValue: { fontSize: 14, fontWeight: '500' },
+  // Footer
+  footer: { alignItems: 'center', paddingVertical: 32 },
+  footerText: { fontSize: 16, fontWeight: '700', letterSpacing: 2 },
+  footerSubtext: { fontSize: 12, marginTop: 4, opacity: 0.6 },
 });

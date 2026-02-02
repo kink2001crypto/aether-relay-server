@@ -1,30 +1,47 @@
 /**
- * 🌐 AETHER Mobile - Server-Only Hook
- * Connexion au serveur Railway uniquement
+ * 🌐 AETHER Mobile - App State Hook
+ * Connects to Fly.io server via WebSocket
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Alert, AppState, AppStateStatus } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SERVER_URL, SOCKET_CONFIG, STORAGE_KEYS, DEFAULT_MODEL_VARIANTS } from '../config';
 
 // ============== TYPES ==============
 
-interface Message {
+export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  codeBlocks?: { language: string; code: string }[];
+  codeBlocks?: CodeBlock[];
+  actions?: AgentAction[];
+  taskId?: string;
 }
 
-interface FileItem {
+export interface CodeBlock {
+  language: string;
+  code: string;
+  path?: string;
+}
+
+export interface AgentAction {
+  id: string;
+  type: 'write_file' | 'delete_file' | 'run_command' | 'git_operation' | 'read_file' | 'search_code';
+  description: string;
+  data: Record<string, any>;
+  status?: 'pending' | 'executed' | 'failed';
+}
+
+export interface FileItem {
   name: string;
   path: string;
   type: 'file' | 'directory';
 }
 
-interface Project {
+export interface Project {
   name: string;
   path: string;
   folder: string;
@@ -49,6 +66,7 @@ interface ApiKeys {
   claude?: string;
   deepseek?: string;
   grok?: string;
+  glm?: string;
 }
 
 interface ModelVariants {
@@ -57,9 +75,12 @@ interface ModelVariants {
   claude: string;
   deepseek: string;
   grok: string;
+  glm: string;
+  ollama: string;
 }
 
 interface AppContextType {
+  // State
   messages: Message[];
   files: FileItem[];
   projects: Project[];
@@ -75,16 +96,17 @@ interface AppContextType {
   modelVariants: ModelVariants;
   availableModels: string[];
   apiKeys: ApiKeys;
-  gitStatus: any;
+  gitStatus: GitStatus;
   lastApplied: { undoId: number; path: string; timestamp: number } | null;
   lintErrors: any[];
-  
+
+  // Actions
   sendMessage: (content: string) => void;
   navigateToPath: (path: string) => void;
   executeCommand: (command: string) => void;
   setSelectedModel: (model: string) => void;
   setModelVariant: (provider: string, variant: string) => void;
-  setCurrentProject: (project: Project) => void;
+  setCurrentProject: (project: Project | null) => void;
   setApiKey: (model: string, key: string) => void;
   openFile: (path: string) => void;
   saveFile: (path: string, content: string) => void;
@@ -97,15 +119,13 @@ interface AppContextType {
   clearHistory: () => void;
   undoLastChange: () => void;
   lintProject: () => void;
+  executeAction: (action: AgentAction) => void;
 }
-
-// 🌐 SERVEUR RAILWAY - URL FIXE
-const SERVER_URL = 'https://aether-relay-server-production.up.railway.app';
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [socket, setSocket] = useState<any>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -121,11 +141,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedModel, setSelectedModelState] = useState('gemini');
   const [apiKeys, setApiKeysState] = useState<ApiKeys>({});
   const [modelVariants, setModelVariantsState] = useState<ModelVariants>({
-    gemini: 'gemini-1.5-flash',
-    openai: 'gpt-4o',
-    claude: 'claude-3-5-sonnet-20241022',
-    deepseek: 'deepseek-chat',
-    grok: 'grok-2-latest',
+    gemini: DEFAULT_MODEL_VARIANTS.gemini,
+    openai: DEFAULT_MODEL_VARIANTS.openai,
+    claude: DEFAULT_MODEL_VARIANTS.claude,
+    deepseek: DEFAULT_MODEL_VARIANTS.deepseek,
+    grok: DEFAULT_MODEL_VARIANTS.grok,
+    glm: DEFAULT_MODEL_VARIANTS.glm,
+    ollama: DEFAULT_MODEL_VARIANTS.ollama,
   });
   const [lastApplied, setLastApplied] = useState<{ undoId: number; path: string; timestamp: number } | null>(null);
 
@@ -139,17 +161,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const savedModel = await AsyncStorage.getItem('selectedModel');
-        const savedApiKeys = await AsyncStorage.getItem('apiKeys');
-        const savedVariants = await AsyncStorage.getItem('modelVariants');
-        const savedProject = await AsyncStorage.getItem('currentProject');
+        const [savedModel, savedApiKeys, savedVariants, savedProject] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.selectedModel),
+          AsyncStorage.getItem(STORAGE_KEYS.apiKeys),
+          AsyncStorage.getItem(STORAGE_KEYS.modelVariants),
+          AsyncStorage.getItem(STORAGE_KEYS.currentProject),
+        ]);
 
         if (savedModel) setSelectedModelState(savedModel);
         if (savedApiKeys) {
-          try { setApiKeysState(JSON.parse(savedApiKeys)); } catch (e) { }
+          try { setApiKeysState(JSON.parse(savedApiKeys)); } catch (e) { /* ignore */ }
         }
         if (savedVariants) {
-          try { setModelVariantsState(prev => ({ ...prev, ...JSON.parse(savedVariants) })); } catch (e) { }
+          try {
+            setModelVariantsState(prev => ({ ...prev, ...JSON.parse(savedVariants) }));
+          } catch (e) { /* ignore */ }
         }
         if (savedProject) {
           try {
@@ -157,7 +183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (parsed?.name && parsed?.path) {
               setCurrentProjectState(parsed);
             }
-          } catch (e) { }
+          } catch (e) { /* ignore */ }
         }
       } catch (e) {
         console.log('Error loading settings:', e);
@@ -166,36 +192,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadSettings();
   }, []);
 
-  // 🌐 Connect to SERVER (Railway) with network resilience
+  // Connect to server (Fly.io)
   useEffect(() => {
     console.log('🌐 Connecting to server:', SERVER_URL);
 
-    const newSocket = io(SERVER_URL, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: Infinity, // Never give up
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      randomizationFactor: 0.5,
-      timeout: 30000,
-      forceNew: false,
-    });
-
-    // Track socket reference for reconnection
+    const newSocket = io(SERVER_URL, SOCKET_CONFIG);
     const socketRef = { current: newSocket };
 
+    // Connection events
     newSocket.on('connect', () => {
       setIsConnected(true);
       console.log('✅ Connected to server');
       newSocket.emit('register', { type: 'mobile' });
       newSocket.emit('getProjects');
-      newSocket.emit('getCurrentProject'); // Get current project from server
+      newSocket.emit('getCurrentProject');
     });
 
     newSocket.on('disconnect', (reason) => {
       setIsConnected(false);
       console.log('❌ Disconnected:', reason);
-      // Force reconnect if server disconnected us
       if (reason === 'io server disconnect') {
         newSocket.connect();
       }
@@ -212,67 +227,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newSocket.emit('getProjects');
     });
 
-    newSocket.on('reconnect_attempt', (attemptNumber: number) => {
-      console.log('🔄 Reconnecting... attempt', attemptNumber);
-    });
-
-    // 📱 Handle app state changes (background/foreground)
+    // App state handling (background/foreground)
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
-        console.log('📱 App became active, checking connection...');
-        if (!socketRef.current.connected) {
-          console.log('🔄 Reconnecting socket...');
-          socketRef.current.connect();
-        }
+      if (nextAppState === 'active' && !socketRef.current.connected) {
+        console.log('📱 App active, reconnecting...');
+        socketRef.current.connect();
       }
     };
-
     const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
 
-    // 🔄 Periodic connection check (handles WiFi <-> LTE)
+    // Connection check interval
     const connectionCheck = setInterval(() => {
       if (!socketRef.current.connected) {
         console.log('🔄 Connection check: reconnecting...');
         socketRef.current.connect();
       }
-    }, 5000); // Check every 5 seconds
+    }, 5000);
 
-    // Projects
+    // Data events
     newSocket.on('projects', (data: Project[]) => {
       console.log('📂 Projects:', data.length);
       setProjects(data);
     });
 
-    // Current project from server (sync across all clients)
     newSocket.on('currentProject', (data: Project | null) => {
       if (data) {
         console.log('📂 Current project from server:', data.name);
         setCurrentProjectState(data);
-        // Also save locally
-        AsyncStorage.setItem('currentProject', JSON.stringify(data));
+        AsyncStorage.setItem(STORAGE_KEYS.currentProject, JSON.stringify(data));
       }
     });
 
-    // Project changed by another client
     newSocket.on('project:changed', (data: Project | null) => {
       if (data) {
         console.log('📂 Project changed by another client:', data.name);
         setCurrentProjectState(data);
-        AsyncStorage.setItem('currentProject', JSON.stringify(data));
+        AsyncStorage.setItem(STORAGE_KEYS.currentProject, JSON.stringify(data));
       }
     });
 
-    // Files
-    newSocket.on('files', (data: FileItem[]) => {
-      setFiles(data);
-    });
+    newSocket.on('files', (data: FileItem[]) => setFiles(data));
+    newSocket.on('fileContent', (data: { content: string }) => setFileContent(data.content));
 
-    newSocket.on('fileContent', (data: { content: string }) => {
-      setFileContent(data.content);
-    });
-
-    // AI Response
-    newSocket.on('aiResponse', (data: { content: string; codeBlocks?: { language: string; code: string }[] }) => {
+    // AI Response with structured actions
+    newSocket.on('aiResponse', (data: {
+      content: string;
+      codeBlocks?: CodeBlock[];
+      actions?: AgentAction[];
+      taskId?: string;
+    }) => {
       setIsLoading(false);
       const newMessage: Message = {
         id: Date.now().toString(),
@@ -280,6 +283,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         content: data.content,
         timestamp: new Date(),
         codeBlocks: data.codeBlocks,
+        actions: data.actions,
+        taskId: data.taskId,
       };
       setMessages(prev => [...prev, newMessage]);
     });
@@ -314,27 +319,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Git
     newSocket.on('gitStatus', (data: any) => setGitStatus(data));
     newSocket.on('gitCommitResult', (data: any) => {
-      if (data.success) {
-        Alert.alert('✅ Committed!', data.message);
-      } else {
-        Alert.alert('❌ Failed', data.error);
-      }
+      Alert.alert(data.success ? '✅ Committed!' : '❌ Failed', data.success ? data.message : data.error);
     });
     newSocket.on('gitPushResult', (data: any) => {
-      if (data.success) {
-        Alert.alert('✅ Pushed!', data.message);
-      } else {
-        Alert.alert('❌ Failed', data.error);
-      }
+      Alert.alert(data.success ? '✅ Pushed!' : '❌ Failed', data.success ? data.message : data.error);
     });
 
     // Delete
     newSocket.on('deleteResult', (data: { success: boolean; path?: string; error?: string }) => {
-      if (data.success) {
-        Alert.alert('✅ Deleted!', `${data.path} deleted`);
-      } else {
-        Alert.alert('❌ Failed', data.error);
-      }
+      Alert.alert(data.success ? '✅ Deleted!' : '❌ Failed', data.success ? `${data.path} deleted` : data.error);
     });
 
     // History
@@ -359,7 +352,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
+    // Action dispatched confirmation
+    newSocket.on('actionDispatched', (data: { actionId: string; type: string }) => {
+      console.log(`⚡ Action dispatched: ${data.type} (${data.actionId})`);
+    });
+
     setSocket(newSocket);
+
     return () => {
       appStateSubscription.remove();
       clearInterval(connectionCheck);
@@ -428,27 +427,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const setSelectedModel = useCallback(async (model: string) => {
     setSelectedModelState(model);
-    await AsyncStorage.setItem('selectedModel', model);
+    await AsyncStorage.setItem(STORAGE_KEYS.selectedModel, model);
   }, []);
 
-  const setCurrentProject = useCallback(async (project: Project) => {
+  const setCurrentProject = useCallback(async (project: Project | null) => {
     setCurrentProjectState(project);
-    await AsyncStorage.setItem('currentProject', JSON.stringify(project));
-    if (socket) {
-      socket.emit('setProject', project);
+    if (project) {
+      await AsyncStorage.setItem(STORAGE_KEYS.currentProject, JSON.stringify(project));
+      if (socket) {
+        socket.emit('setProject', project);
+      }
+    } else {
+      await AsyncStorage.removeItem(STORAGE_KEYS.currentProject);
     }
   }, [socket]);
 
   const setApiKey = useCallback(async (model: string, key: string) => {
     const newKeys = { ...apiKeys, [model]: key };
     setApiKeysState(newKeys);
-    await AsyncStorage.setItem('apiKeys', JSON.stringify(newKeys));
+    await AsyncStorage.setItem(STORAGE_KEYS.apiKeys, JSON.stringify(newKeys));
   }, [apiKeys]);
 
   const setModelVariant = useCallback(async (provider: string, variant: string) => {
     const newVariants = { ...modelVariants, [provider]: variant };
     setModelVariantsState(newVariants);
-    await AsyncStorage.setItem('modelVariants', JSON.stringify(newVariants));
+    await AsyncStorage.setItem(STORAGE_KEYS.modelVariants, JSON.stringify(newVariants));
   }, [modelVariants]);
 
   const applyCode = useCallback((code: string, filePath: string) => {
@@ -496,6 +499,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     socket.emit('lintProject', { projectPath: currentProject.path });
   }, [socket, currentProject]);
 
+  const executeAction = useCallback((action: AgentAction) => {
+    if (!socket || !currentProject) return;
+    socket.emit('executeAction', { action, projectPath: currentProject.path });
+  }, [socket, currentProject]);
+
   return (
     <AppContext.Provider value={{
       messages,
@@ -511,7 +519,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isLoading,
       serverUrl: SERVER_URL,
       selectedModel,
-      availableModels: ['gemini', 'openai', 'claude', 'deepseek', 'grok'],
+      availableModels: ['ollama', 'gemini', 'claude', 'openai', 'deepseek', 'grok', 'glm'],
       sendMessage,
       navigateToPath,
       executeCommand,
@@ -534,6 +542,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastApplied,
       lintProject,
       lintErrors,
+      executeAction,
     }}>
       {children}
     </AppContext.Provider>

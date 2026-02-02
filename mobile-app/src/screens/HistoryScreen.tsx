@@ -1,4 +1,9 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * 📜 AETHER Mobile - History Screen
+ * View and manage conversation history
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, StyleSheet, Alert, ActivityIndicator
 } from 'react-native';
@@ -7,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useApp } from '../hooks/useApp';
 import { useTheme } from '../theme';
+import { SERVER_URL } from '../config';
 
 interface Conversation {
   projectPath: string;
@@ -17,7 +23,7 @@ interface Conversation {
 }
 
 export default function HistoryScreen({ navigation }: any) {
-  const { serverUrl, isConnected, currentProject, setCurrentProject, projects } = useApp();
+  const { isConnected, currentProject, setCurrentProject, projects } = useApp();
   const { colors, isDarkMode } = useTheme();
   
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -27,12 +33,12 @@ export default function HistoryScreen({ navigation }: any) {
     if (isConnected) {
       fetchConversations();
     }
-  }, [isConnected, serverUrl]);
+  }, [isConnected]);
 
   const fetchConversations = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${serverUrl}/api/chat/conversations`, {
+      const response = await fetch(`${SERVER_URL}/api/chat/conversations`, {
         headers: { 'ngrok-skip-browser-warning': 'true' }
       });
       const data = await response.json();
@@ -56,7 +62,7 @@ export default function HistoryScreen({ navigation }: any) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${serverUrl}/api/chat/conversations`, {
+              const response = await fetch(`${SERVER_URL}/api/chat/conversations`, {
                 method: 'DELETE',
                 headers: { 
                   'Content-Type': 'application/json',
