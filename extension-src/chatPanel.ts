@@ -5,7 +5,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'aether.chatPanel';
     private _view?: vscode.WebviewView;
     private _messages: { role: string; content: string }[] = [];
-    private _serverUrl: string = 'https://aether-relay-server-production.up.railway.app';
+    private _serverUrl: string = 'https://aether-server.fly.dev';
     private _selectedModel: string = 'gemini';
     private _isConnected: boolean = false;
     private _pollingInterval?: NodeJS.Timeout;
@@ -23,7 +23,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
     private _loadSettings() {
         const config = vscode.workspace.getConfiguration('aether');
-        this._serverUrl = config.get('serverUrl', 'https://aether-relay-server-production.up.railway.app');
+        this._serverUrl = config.get('serverUrl', 'https://aether-server.fly.dev');
         this._selectedModel = config.get('selectedModel', 'gemini');
     }
 

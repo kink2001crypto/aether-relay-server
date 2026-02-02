@@ -25,8 +25,10 @@ import {
     getTaskStatus,
     getProjectTasks,
     recordActionResult,
-    taskQueue
+    taskQueue,
+    callAI
 } from '../ai/index.js';
+import { saveMessage, getAllConversations, deleteConversation } from '../db/database.js';
 
 export function setupAPI(app: Express, io: SocketIOServer) {
 
@@ -159,6 +161,94 @@ export function setupAPI(app: Express, io: SocketIOServer) {
             return res.status(400).json({ success: false });
         }
         const deleted = clearMessages(projectPath);
+        res.json({ success: true, deleted });
+    });
+
+    // POST /api/chat - Main chat endpoint for VS Code extension
+    app.post('/api/chat', async (req: Request, res: Response) => {
+        const { message, projectPath, model, apiKey, source } = req.body;
+
+        if (!message) {
+            return res.status(400).json({ success: false, error: 'Message required' });
+        }
+
+        try {
+            // Save user message
+            if (projectPath) {
+                saveMessage(projectPath, 'user', message);
+            }
+
+            // Build context from project files
+            let projectContext = '';
+            if (projectPath) {
+                const project = getProjectsWithFiles().find(p => p.path === projectPath);
+                if (project?.files) {
+                    const extractContent = (items: any[], basePath = ''): string[] => {
+                        const contents: string[] = [];
+                        for (const item of items) {
+                            const path = basePath ? `${basePath}/${item.name}` : item.name;
+                            if (item.type === 'file' && item.content) {
+                                contents.push(`=== ${path} ===\n${item.content}`);
+                            } else if (item.type === 'directory' && item.children) {
+                                contents.push(...extractContent(item.children, path));
+                            }
+                        }
+                        return contents;
+                    };
+
+                    const files = extractContent(project.files).slice(0, 20);
+                    if (files.length > 0) {
+                        projectContext = `\n\n📂 PROJECT FILES:\n${files.join('\n\n')}`;
+                    }
+                }
+            }
+
+            // Call AI
+            const response = await callAI({
+                message,
+                projectContext,
+                model: model || 'gemini',
+                apiKey,
+                projectPath: projectPath || 'default'
+            });
+
+            // Save assistant message
+            if (projectPath) {
+                saveMessage(projectPath, 'assistant', response.content);
+            }
+
+            console.log(`💬 Chat API [${source || 'unknown'}]: ${message.substring(0, 30)}...`);
+
+            res.json({
+                success: true,
+                response: response.content,
+                actions: response.actions,
+                taskId: response.taskId
+            });
+
+        } catch (error: any) {
+            console.error('Chat API error:', error);
+            res.status(500).json({
+                success: false,
+                error: error.message,
+                response: `Error: ${error.message}`
+            });
+        }
+    });
+
+    // GET /api/chat/conversations - List all conversations
+    app.get('/api/chat/conversations', (req: Request, res: Response) => {
+        const conversations = getAllConversations();
+        res.json({ conversations });
+    });
+
+    // DELETE /api/chat/conversations - Delete a conversation
+    app.delete('/api/chat/conversations', (req: Request, res: Response) => {
+        const { projectPath } = req.body;
+        if (!projectPath) {
+            return res.status(400).json({ success: false, error: 'projectPath required' });
+        }
+        const deleted = deleteConversation(projectPath);
         res.json({ success: true, deleted });
     });
 

@@ -17,7 +17,7 @@ interface FileItem {
 }
 
 export class SyncHandler {
-	private serverUrl: string = 'https://aether-relay-server-production.up.railway.app';
+	private serverUrl: string = 'https://aether-server.fly.dev';
 	private syncInterval: NodeJS.Timeout | undefined;
 
 	// Terminal PTY properties

@@ -171,6 +171,26 @@ export function clearMessages(projectPath: string): number {
     return result.changes;
 }
 
+export function getAllConversations(): Array<{ projectPath: string; messageCount: number; lastMessage: string }> {
+    const db = getDatabase();
+    const rows = db.prepare(`
+        SELECT
+            project_path as projectPath,
+            COUNT(*) as messageCount,
+            MAX(created_at) as lastMessage
+        FROM messages
+        GROUP BY project_path
+        ORDER BY lastMessage DESC
+    `).all() as any[];
+    return rows;
+}
+
+export function deleteConversation(projectPath: string): number {
+    const db = getDatabase();
+    const result = db.prepare('DELETE FROM messages WHERE project_path = ?').run(projectPath);
+    return result.changes;
+}
+
 // ========== CURRENT STATE ==========
 
 export interface CurrentProject {

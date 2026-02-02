@@ -15,7 +15,7 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
     readonly onDidChangeTreeData: vscode.Event<ProjectItem | undefined | null> = this._onDidChangeTreeData.event;
 
     private _syncedProjects: SyncedProject[] = [];
-    private _serverUrl: string = 'https://aether-relay-server-production.up.railway.app';
+    private _serverUrl: string = 'https://aether-server.fly.dev';
     private _clientId: string;
 
     constructor(private context: vscode.ExtensionContext) {
@@ -39,13 +39,13 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
         let serverUrl = config.get('serverUrl', this._serverUrl);
 
         // FIX: Always use cloud URL (localhost doesn't work on mobile/LTE)
-        if (typeof serverUrl === 'string' && (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1'))) {
-            serverUrl = 'https://aether-relay-server-production.up.railway.app';
+        if (typeof serverUrl === 'string' && (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1') || serverUrl.includes('railway.app'))) {
+            serverUrl = 'https://aether-server.fly.dev';
         }
         this._serverUrl = serverUrl as string;
 
         // DEBUG: Show that extension loaded
-        vscode.window.showInformationMessage(`🔧 AETHER v2.2 loaded - ${this._syncedProjects.length} projets locaux`);
+        vscode.window.showInformationMessage(`🔧 AETHER v2.3 (Fly.io) - ${this._syncedProjects.length} projets locaux`);
 
         // AUTO-SYNC: Push saved projects to server on startup (delayed to ensure URL is set)
         if (this._syncedProjects.length > 0) {

@@ -68,12 +68,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 async function connect() {
 	const config = vscode.workspace.getConfiguration('aether');
-	let serverUrl = config.get<string>('serverUrl', 'https://aether-relay-server-production.up.railway.app');
+	let serverUrl = config.get<string>('serverUrl', 'https://aether-server.fly.dev');
 	const interval = config.get('pollingInterval', 500);
 
 	// FIX: Force Cloud URL if Localhost is configured (for LTE support)
-	if (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) {
-		serverUrl = 'https://aether-relay-server-production.up.railway.app';
+	if (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1') || serverUrl.includes('railway.app')) {
+		serverUrl = 'https://aether-server.fly.dev';
 		vscode.window.showWarningMessage('⚠️ AETHER: Localhost settings detected. Switched to Cloud Server for LTE/Mobile support.');
 	}
 
@@ -185,7 +185,7 @@ async function registerWorkspace(serverUrl: string) {
 
 function showStatus() {
 	const config = vscode.workspace.getConfiguration('aether');
-	const serverUrl = config.get('serverUrl', 'https://aether-relay-server-production.up.railway.app');
+	const serverUrl = config.get('serverUrl', 'https://aether-server.fly.dev');
 	const model = config.get('selectedModel', 'gemini');
 
 	vscode.window.showInformationMessage(
