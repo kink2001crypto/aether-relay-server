@@ -1,11 +1,19 @@
 /**
  * ⚡ WebSocket Handler - Real-time communication
  * Uses unified project cache shared with API
+ * Enhanced with structured agent actions
  */
 
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { saveMessage, getMessages, clearMessages } from './db/database.js';
-import { callAI } from './ai/router.js';
+import {
+    callAI,
+    clearHistory,
+    getTaskStatus,
+    getProjectTasks,
+    recordActionResult,
+    AnyAction
+} from './ai/index.js';
 import {
     getProjects,
     getProject,
@@ -13,7 +21,9 @@ import {
     getFilesAtPath,
     getFileContent,
     addPendingEvent,
-    setSocketIO
+    setSocketIO,
+    getCurrentProject,
+    setCurrentProject
 } from './cache/projectCache.js';
 
 export function setupWebSocket(io: SocketIOServer) {
@@ -23,9 +33,15 @@ export function setupWebSocket(io: SocketIOServer) {
     io.on('connection', (socket: Socket) => {
         console.log(`⚡ Client connected: ${socket.id}`);
 
-        // Send projects on connect
+        // Send projects and current project on connect
         const projects = getProjects();
         socket.emit('projects', projects);
+
+        // Send current selected project
+        const currentProject = getCurrentProject();
+        if (currentProject) {
+            socket.emit('currentProject', currentProject);
+        }
 
         // ========== REGISTER ==========
 
@@ -46,17 +62,23 @@ export function setupWebSocket(io: SocketIOServer) {
                 return;
             }
             console.log(`📂 Project selected: ${data.name}`);
-            socket.broadcast.emit('project:changed', data);
+            // Persist and broadcast to ALL clients (including sender)
+            setCurrentProject(data);
+        });
 
-            // Also add to pending events for polling VS Code clients
-            addPendingEvent('project:changed', data);
+        // Get current project (for new connections)
+        socket.on('getCurrentProject', () => {
+            const current = getCurrentProject();
+            socket.emit('currentProject', current);
         });
 
         // Register projects from VS Code extension
-        socket.on('registerProjects', (data: { projects: Array<{ name: string; path: string; files?: any[] }> }) => {
-            console.log(`📂 Registering ${data.projects.length} projects via WebSocket`);
+        socket.on('registerProjects', (data: { projects: Array<{ name: string; path: string; files?: any[] }>; clientId?: string }) => {
+            // Use socket.id as clientId if not provided
+            const clientId = data.clientId || socket.id;
+            console.log(`📂 Registering ${data.projects.length} projects from client "${clientId}" via WebSocket`);
 
-            registerProjects(data.projects);
+            registerProjects(data.projects, clientId);
 
             socket.emit('projectsRegistered', { success: true, count: data.projects.length });
         });
@@ -125,12 +147,13 @@ export function setupWebSocket(io: SocketIOServer) {
                     }
                 }
 
-                // Call AI
+                // Call AI with project path for task tracking
                 const response = await callAI({
                     message: data.message,
                     projectContext,
                     model: data.model || 'gemini',
-                    apiKey: data.apiKey
+                    apiKey: data.apiKey,
+                    projectPath: data.projectPath
                 });
 
                 // Save assistant message
@@ -138,23 +161,143 @@ export function setupWebSocket(io: SocketIOServer) {
                     saveMessage(data.projectPath, 'assistant', response.content);
                 }
 
-                // Extract code blocks
-                const codeBlocks: { language: string; code: string }[] = [];
+                // Extract code blocks (legacy format for backwards compatibility)
+                const codeBlocks: { language: string; code: string; path?: string }[] = [];
                 const regex = /```(\w+)?\n([\s\S]*?)```/g;
                 let match;
                 while ((match = regex.exec(response.content)) !== null) {
-                    codeBlocks.push({ language: match[1] || 'text', code: match[2].trim() });
+                    const language = match[1] || 'text';
+                    const code = match[2].trim();
+
+                    // Try to extract file path from first line
+                    const firstLine = code.split('\n')[0];
+                    const pathMatch = firstLine.match(/^(?:\/\/|#)\s*(.+\.\w+)/);
+
+                    codeBlocks.push({
+                        language,
+                        code: pathMatch ? code.split('\n').slice(1).join('\n') : code,
+                        path: pathMatch ? pathMatch[1].trim() : undefined
+                    });
                 }
 
+                // Emit response with structured actions
                 socket.emit('aiResponse', {
                     content: response.content,
-                    codeBlocks: codeBlocks.length > 0 ? codeBlocks : undefined
+                    codeBlocks: codeBlocks.length > 0 ? codeBlocks : undefined,
+                    actions: response.actions,
+                    taskId: response.taskId
                 });
 
             } catch (error: any) {
                 console.error('Chat error:', error);
-                socket.emit('aiResponse', { content: `Error: ${error.message}` });
+                socket.emit('aiResponse', { content: `Error: ${error.message}`, actions: [] });
             }
+        });
+
+        // ========== AGENT ACTIONS ==========
+
+        // Get task status
+        socket.on('getTaskStatus', (data: { taskId: string }) => {
+            const status = getTaskStatus(data.taskId);
+            socket.emit('taskStatus', status || { error: 'Task not found' });
+        });
+
+        // Get project tasks history
+        socket.on('getProjectTasks', (data: { projectPath: string; limit?: number }) => {
+            const tasks = getProjectTasks(data.projectPath, data.limit || 10);
+            socket.emit('projectTasks', { projectPath: data.projectPath, tasks });
+        });
+
+        // Action feedback from client (when user applies/executes an action)
+        socket.on('actionResult', (data: {
+            taskId: string;
+            actionId: string;
+            success: boolean;
+            output?: string;
+            error?: string;
+        }) => {
+            console.log(`📋 Action result: ${data.actionId} - ${data.success ? '✅' : '❌'}`);
+
+            const recorded = recordActionResult(
+                data.taskId,
+                data.actionId,
+                data.success,
+                data.output,
+                data.error
+            );
+
+            if (recorded) {
+                // Get updated task status and broadcast
+                const status = getTaskStatus(data.taskId);
+                socket.emit('taskUpdated', status);
+                socket.broadcast.emit('taskUpdated', status);
+            }
+        });
+
+        // Execute action (from mobile to VS Code)
+        socket.on('executeAction', (data: { action: AnyAction; projectPath: string }) => {
+            console.log(`⚡ Execute action: ${data.action.type} - ${data.action.description}`);
+
+            switch (data.action.type) {
+                case 'write_file':
+                    socket.broadcast.emit('file:apply', {
+                        path: data.action.data.path,
+                        content: data.action.data.content,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    addPendingEvent('file:apply', {
+                        ...data.action.data,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    break;
+
+                case 'delete_file':
+                    socket.broadcast.emit('file:delete', {
+                        filePath: data.action.data.path,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    addPendingEvent('file:delete', {
+                        filePath: data.action.data.path,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    break;
+
+                case 'run_command':
+                    socket.broadcast.emit('terminal:exec', {
+                        command: data.action.data.command,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    addPendingEvent('terminal', {
+                        command: data.action.data.command,
+                        projectPath: data.projectPath,
+                        actionId: data.action.id
+                    });
+                    break;
+
+                case 'git_operation':
+                    const gitEvent = `git:${data.action.data.operation}`;
+                    socket.broadcast.emit(gitEvent, {
+                        projectPath: data.projectPath,
+                        actionId: data.action.id,
+                        ...data.action.data.args
+                    });
+                    addPendingEvent(gitEvent, {
+                        projectPath: data.projectPath,
+                        actionId: data.action.id,
+                        ...data.action.data.args
+                    });
+                    break;
+            }
+
+            socket.emit('actionDispatched', {
+                actionId: data.action.id,
+                type: data.action.type
+            });
         });
 
         // ========== HISTORY ==========
@@ -166,6 +309,8 @@ export function setupWebSocket(io: SocketIOServer) {
 
         socket.on('clearConversationHistory', (data: { projectPath: string }) => {
             const deleted = clearMessages(data.projectPath);
+            // Also clear in-memory conversation history
+            clearHistory(data.projectPath);
             socket.emit('conversationHistoryCleared', { success: true, deleted });
         });
 
