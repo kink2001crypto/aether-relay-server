@@ -3,8 +3,8 @@
  * Server connection settings for Fly.io deployment
  */
 
-// Production server on Fly.io
-export const SERVER_URL = 'https://aether-server.fly.dev';
+// Production server on Railway
+export const SERVER_URL = 'https://aether-relay-server-production.up.railway.app';
 
 // Available AI model providers
 export const AI_PROVIDERS = ['ollama', 'gemini', 'claude', 'openai', 'deepseek', 'grok', 'glm'] as const;

@@ -23,7 +23,10 @@ VERSION=$(node -p "require('./package.json').version")
 
 # Package VSIX
 echo "📦 Creating VSIX package..."
-npx vsce package --out "aether-mobile-${VERSION}.vsix"
+NAME=$(node -p "require('./package.json').name")
+VERSION=$(node -p "require('./package.json').version")
+VSIX_NAME="${NAME}-${VERSION}.vsix"
+npx vsce package --out "$VSIX_NAME"
 
 # Restore server package.json
 if [ -f package-server-backup.json ]; then

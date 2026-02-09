@@ -1,5 +1,5 @@
 ---
-description: Check server status and projects
+description: Check Railway server status and projects
 ---
 
 ## Check Server Status

@@ -1,8 +1,8 @@
 {
-	"name": "aether-mobile",
-	"displayName": "AETHER AI Assistant",
+	"name": "aether-mobile-pro",
+	"displayName": "AETHER AI Pro",
 	"description": "AI-powered coding assistant - Chat, edit files, run commands from VS Code and mobile. Compatible with VS Code, Cursor, VSCodium, Code-OSS, Windsurf, and other forks.",
-	"version": "2.3.0",
+	"version": "2.4.0",
 	"publisher": "aether",
 	"license": "MIT",
 	"engines": {
@@ -134,8 +134,8 @@
 			"properties": {
 				"aether.serverUrl": {
 					"type": "string",
-					"default": "https://aether-relay-server-production.up.railway.app",
-					"description": "URL of the AETHER relay server (Cloud or local)"
+					"default": "https://aether-server.fly.dev",
+					"description": "URL of the AETHER relay server (Cloud)"
 				},
 				"aether.autoConnect": {
 					"type": "boolean",

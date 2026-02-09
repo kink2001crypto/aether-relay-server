@@ -19,6 +19,9 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
     private _clientId: string;
 
     constructor(private context: vscode.ExtensionContext) {
+        // Load saved projects from storage
+        this._loadSavedProjects();
+
         // Generate unique clientId for this IDE instance (persisted)
         let savedClientId = this.context.globalState.get<string>('aetherClientId');
         if (!savedClientId) {
@@ -31,9 +34,6 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
         }
         this._clientId = savedClientId;
 
-        // Load saved projects from storage
-        this._loadSavedProjects();
-
         // Load server URL from settings - FORCE CLOUD URL
         const config = vscode.workspace.getConfiguration('aether');
         let serverUrl = config.get('serverUrl', this._serverUrl);
@@ -45,7 +45,7 @@ export class MobileProjectsProvider implements vscode.TreeDataProvider<ProjectIt
         this._serverUrl = serverUrl as string;
 
         // DEBUG: Show that extension loaded
-        vscode.window.showInformationMessage(`🔧 AETHER v2.3 (Fly.io) - ${this._syncedProjects.length} projets locaux`);
+        vscode.window.showInformationMessage(`🔧 AETHER v2.4 - ${this._syncedProjects.length} projets chargés`);
 
         // AUTO-SYNC: Push saved projects to server on startup (delayed to ensure URL is set)
         if (this._syncedProjects.length > 0) {

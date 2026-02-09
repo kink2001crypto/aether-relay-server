@@ -98,7 +98,7 @@ async function connect() {
         syncHandler.setServerUrl(serverUrl);
         mobileProjectsProvider.setServerUrl(serverUrl);
         // Register current workspace with server
-        await registerWorkspace(serverUrl);
+        // await registerWorkspace(serverUrl as string); // Disabled to prevent duplicate project registration
         // Sync selected mobile projects to cloud
         await mobileProjectsProvider.syncToCloud();
         startPolling(serverUrl, interval);
