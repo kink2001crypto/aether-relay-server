@@ -42,7 +42,8 @@ app.get('/health', (req, res) => {
         ai: {
             gemini: !!process.env.GEMINI_API_KEY,
             openai: !!process.env.OPENAI_API_KEY,
-            claude: !!process.env.ANTHROPIC_API_KEY
+            claude: !!process.env.ANTHROPIC_API_KEY,
+            openrouter: !!process.env.OPENROUTER_API_KEY
         }
     });
 });
@@ -73,6 +74,7 @@ async function start() {
     if (process.env.GEMINI_API_KEY) providers.push('Gemini');
     if (process.env.OPENAI_API_KEY) providers.push('OpenAI');
     if (process.env.ANTHROPIC_API_KEY) providers.push('Claude');
+    if (process.env.OPENROUTER_API_KEY) providers.push('OpenRouter');
 
     if (providers.length === 0) {
         console.log('⚠️  No AI providers configured');

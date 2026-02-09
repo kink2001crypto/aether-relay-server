@@ -14,6 +14,7 @@ interface AIRequest {
     message: string;
     projectContext?: string;
     model: string;
+    modelVariant?: string;  // Specific model variant (e.g., 'anthropic/claude-sonnet-4.5')
     apiKey?: string;
     projectPath?: string;  // For task tracking
 }
@@ -124,7 +125,7 @@ Tu es prêt. Agis comme un développeur senior qui a accès direct au code.`;
 }
 
 export async function callAI(request: AIRequest): Promise<AIResponse> {
-    const { message, projectContext = '', model, apiKey, projectPath = 'default' } = request;
+    const { message, projectContext = '', model, modelVariant, apiKey, projectPath = 'default' } = request;
 
     // Add user message to history
     addToHistory(projectPath, 'user', message);
@@ -147,6 +148,9 @@ export async function callAI(request: AIRequest): Promise<AIResponse> {
             case 'claude':
             case 'claude35':
                 content = (await callClaude(systemPrompt, message, apiKey)).content;
+                break;
+            case 'openrouter':
+                content = (await callOpenRouter(systemPrompt, message, apiKey, modelVariant)).content;
                 break;
             default:
                 content = (await callGemini(systemPrompt, message, apiKey)).content;
@@ -257,3 +261,39 @@ async function callClaude(system: string, message: string, apiKey?: string): Pro
     const textBlock = response.content.find((b: any) => b.type === 'text');
     return { content: textBlock ? textBlock.text : '' };
 }
+
+// OpenRouter - unified provider for all models (Claude, Gemini, GPT, etc.)
+async function callOpenRouter(system: string, message: string, apiKey?: string, modelVariant?: string): Promise<{ content: string }> {
+    const key = apiKey || process.env.OPENROUTER_API_KEY;
+    if (!key) throw new Error('OpenRouter API key not configured');
+
+    // Default to Claude 3.5 Sonnet, but can be overridden
+    const model = modelVariant || 'anthropic/claude-3.5-sonnet';
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://aether-relay-server-production.up.railway.app',
+            'X-Title': 'AETHER Mobile'
+        },
+        body: JSON.stringify({
+            model,
+            max_tokens: 8192,
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: message }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`OpenRouter error: ${error}`);
+    }
+
+    const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+    return { content: data.choices[0]?.message?.content || '' };
+}
+

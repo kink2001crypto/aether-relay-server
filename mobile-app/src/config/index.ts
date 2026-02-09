@@ -6,19 +6,20 @@
 // Production server on Railway
 export const SERVER_URL = 'https://aether-relay-server-production.up.railway.app';
 
-// Available AI model providers
-export const AI_PROVIDERS = ['ollama', 'gemini', 'claude', 'openai', 'deepseek', 'grok', 'glm'] as const;
+// Available AI model providers (including OpenRouter for unified access)
+export const AI_PROVIDERS = ['openrouter', 'gemini', 'claude', 'openai', 'deepseek', 'grok', 'mistral', 'ollama'] as const;
 export type AIProvider = typeof AI_PROVIDERS[number];
 
-// Default model variants for each provider
+// Default model variants for each provider - Updated February 2026
 export const DEFAULT_MODEL_VARIANTS: Record<string, string> = {
-  gemini: 'gemini-1.5-flash',
-  openai: 'gpt-4o',
-  claude: 'claude-3-5-sonnet-20241022',
-  deepseek: 'deepseek-chat',
-  grok: 'grok-2-latest',
-  glm: 'glm-4-plus',
-  ollama: 'qwen2.5:14b',
+  openrouter: 'anthropic/claude-sonnet-4.5',     // OpenRouter unified - Claude Sonnet 4.5 (best for coding)
+  gemini: 'google/gemini-3-flash',               // Gemini 3 Flash - fast, 1M context
+  claude: 'anthropic/claude-opus-4.6',           // Claude Opus 4.6 - latest premium
+  openai: 'openai/gpt-5.3-codex',                // GPT-5.3 Codex - self-improving
+  deepseek: 'deepseek/deepseek-v3.2',            // DeepSeek V3.2 - cost effective
+  grok: 'x-ai/grok-3',                           // Grok 3 - latest from X
+  mistral: 'mistralai/devstral-2',               // Devstral 2 - agentic coding
+  ollama: 'qwen2.5:14b',                         // Local model
 };
 
 // App version info

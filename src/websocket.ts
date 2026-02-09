@@ -113,7 +113,7 @@ export function setupWebSocket(io: SocketIOServer) {
 
         // ========== CHAT ==========
 
-        socket.on('chat', async (data: { message: string; model?: string; projectPath?: string; apiKey?: string }) => {
+        socket.on('chat', async (data: { message: string; model?: string; modelVariant?: string; projectPath?: string; apiKey?: string }) => {
             console.log(`💬 Chat: ${data.message.substring(0, 50)}...`);
 
             try {
@@ -152,6 +152,7 @@ export function setupWebSocket(io: SocketIOServer) {
                     message: data.message,
                     projectContext,
                     model: data.model || 'gemini',
+                    modelVariant: data.modelVariant,
                     apiKey: data.apiKey,
                     projectPath: data.projectPath
                 });
